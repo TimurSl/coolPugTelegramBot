@@ -43,19 +43,8 @@ import os
 nickname_storage = CustomNicknameStorage()
 
 
-def _escape_markdown(text: str) -> str:
-    return text
-    #return (
-    #    text.replace("\\", "\\\\")
-    #    .replace("[", "\\[")
-    #    .replace("]", "\\]")
-    #    .replace("_", "\\_")
-    #    .replace("*", "\\*")
-    #    .replace("`", "\\`")
-    #    .replace("~", "\\~")
-    #    .replace("(", "\\(")
-    #    .replace(")", "\\)")
-    #)
+def _escape_html(text: str) -> str:
+    return html.escape(text, quote=False)
 
 
 def _build_profile_link(user_id: int) -> str:
@@ -1002,7 +991,7 @@ class AdvancedModerationModule:
             if level <= 0 and not include_level_zero:
                 return
             name = await self._resolve_roleplay_name(message, user_id)
-            safe_label = _escape_markdown(name)
+            safe_label = _escape_html(name)
             mention = _format_profile_reference(safe_label, user_id)
             user_entries[user_id] = (level, name, mention, safe_label, is_admin)
 
@@ -1642,21 +1631,24 @@ class AdvancedModerationModule:
             # Format response
             duration_text = self._format_duration_text(duration, language)
 
+            admin_identifier = (
+                message.from_user.username or message.from_user.first_name or ""
+            )
             response = self._t(
                 "moderation.ban.response",
                 language,
-                "🔨 **User Banned**\n"
+                "🔨 <b>User Banned</b>\n"
                 "👤 User: {user_id}\n"
                 "⏱ Duration: {duration}\n"
                 "📝 Reason: {reason}\n"
                 "👮‍♂️ By: @{admin}",
-                user_id=user_id,
-                duration=duration_text,
-                reason=reason,
-                admin=message.from_user.username or message.from_user.first_name,
+                user_id=_escape_html(str(user_id)),
+                duration=_escape_html(duration_text),
+                reason=_escape_html(reason),
+                admin=_escape_html(admin_identifier),
             )
 
-            await message.reply(response, parse_mode="Markdown")
+            await message.reply(response, parse_mode="HTML")
 
         except TelegramAPIError as e:
             if "user is an administrator of the chat" in e.message:
@@ -1798,16 +1790,16 @@ class AdvancedModerationModule:
             response = self._t(
                 "moderation.mute.response",
                 language,
-                "🔇 **User Muted**\n"
+                "🔇 <b>User Muted</b>\n"
                 "👤 User: {user_id}\n"
                 "⏱ Duration: {duration}\n"
                 "📝 Reason: {reason}",
-                user_id=user_id,
-                duration=duration_text,
-                reason=reason,
+                user_id=_escape_html(str(user_id)),
+                duration=_escape_html(duration_text),
+                reason=_escape_html(reason),
             )
 
-            await message.reply(response, parse_mode="Markdown")
+            await message.reply(response, parse_mode="HTML")
 
         except TelegramAPIError as e:
             if "user is an administrator of the chat" in e.message:
@@ -1915,13 +1907,13 @@ class AdvancedModerationModule:
         response = self._t(
             "moderation.warn.response",
             language,
-            "⚠️ **Warning Issued**\n"
+            "⚠️ <b>Warning Issued</b>\n"
             "👤 User: {user_id}\n"
             "📝 Reason: {reason}\n"
             "🔢 Warning: {count}/3",
-            user_id=user_id,
-            reason=reason,
-            count=warning_count,
+            user_id=_escape_html(str(user_id)),
+            reason=_escape_html(reason),
+            count=_escape_html(str(warning_count)),
         )
 
         self.db.add_action(
@@ -1940,7 +1932,7 @@ class AdvancedModerationModule:
             response += "\n\n" + self._t(
                 "moderation.warn.auto_mute_notice",
                 language,
-                "🔨 **Maximum warnings reached! User will be muted.**",
+                "🔨 <b>Maximum warnings reached! User will be muted.</b>",
             )
 
             # Auto-mute after 3 warnings
@@ -1972,7 +1964,7 @@ class AdvancedModerationModule:
             except TelegramAPIError:
                 pass
 
-        await message.reply(response, parse_mode="Markdown")
+        await message.reply(response, parse_mode="HTML")
 
     async def handle_warnlist(self, message: Message, bot: Bot):
         language = self._language(message)
@@ -2137,14 +2129,14 @@ class AdvancedModerationModule:
             response = self._t(
                 "moderation.kick.response",
                 language,
-                "👢 **User Kicked**\n"
+                "👢 <b>User Kicked</b>\n"
                 "👤 User: {user_id}\n"
                 "📝 Reason: {reason}",
-                user_id=user_id,
-                reason=reason,
+                user_id=_escape_html(str(user_id)),
+                reason=_escape_html(reason),
             )
 
-            await message.reply(response, parse_mode="Markdown")
+            await message.reply(response, parse_mode="HTML")
 
             self.db.add_action(
                 ModerationAction(
@@ -2707,7 +2699,7 @@ class AdvancedModerationModule:
                 stars=stars,
                 level=level,
             )
-            lines.append(_escape_markdown(header))
+            lines.append(_escape_html(header))
             for _, display in sorted(entries, key=lambda item: item[0]):
                 lines.append(display)
 
@@ -2799,7 +2791,7 @@ class AdvancedModerationModule:
             "⭐️ Level {level} members:",
             level=level,
         )
-        lines = [_escape_markdown(header)]
+        lines = [_escape_html(header)]
         for _, display, is_admin in sorted(matches, key=lambda item: item[0]):
             if is_admin:
                 lines.append(f"⭐️ {display}")
