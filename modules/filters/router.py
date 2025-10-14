@@ -1,3 +1,4 @@
+import html
 import logging
 import re
 import shlex
@@ -8,7 +9,7 @@ from typing import Optional, Tuple
 from aiogram import Bot, Router
 from aiogram.filters import Command
 from aiogram.types import Message, MessageEntity
-from aiogram.utils.text_decorations import markdown_decoration
+from aiogram.utils.text_decorations import html_decoration
 
 from modules.collector.utils import UserCollector
 from modules.roleplay.nickname_storage import CustomNicknameStorage
@@ -36,18 +37,8 @@ _PLACEHOLDER_PATTERN = re.compile(
 )
 
 
-def _escape_markdown(text: str) -> str:
-    return (
-        text.replace("\\", "\\\\")
-        .replace("[", "\\[")
-        .replace("]", "\\]")
-        .replace("_", "\\_")
-        .replace("*", "\\*")
-        .replace("`", "\\`")
-        .replace("~", "\\~")
-        .replace("(", "\\(")
-        .replace(")", "\\)")
-    )
+def _escape_html(text: str) -> str:
+    return html.escape(text, quote=False)
 
 
 def require_level(
@@ -185,7 +176,7 @@ def _build_roleplay_placeholder_label(
     username_label: str,
     display_name: Optional[str],
     fallback: str,
-    markdown: bool,
+    use_html: bool,
 ) -> str:
     rp_nickname = nickname_storage.get_nickname(chat_id, user_id) if chat_id else None
     if prefer_rp:
@@ -205,11 +196,11 @@ def _build_roleplay_placeholder_label(
         else:
             base_label = fallback
 
-    return _escape_markdown(base_label) if markdown else base_label
+    return _escape_html(base_label) if use_html else base_label
 
 
-def _format_markdown_link(label: str, user_id: int) -> str:
-    return f"[{label}](tg://user?id={user_id})"
+def _format_html_link(label: str, user_id: int) -> str:
+    return f'<a href="tg://user?id={user_id}">{label}</a>'
 
 
 def _resolve_placeholder_value(
@@ -217,7 +208,7 @@ def _resolve_placeholder_value(
     *,
     chat_id: Optional[int],
     fallback: str,
-    markdown: bool,
+    use_html: bool,
 ) -> str:
     random_user = _select_random_user(chat_id)
     if not random_user:
@@ -226,7 +217,7 @@ def _resolve_placeholder_value(
     user_id, username, display_name = random_user
     if placeholder == "randomUser":
         base_label = username or fallback
-        return _escape_markdown(base_label) if markdown else base_label
+        return _escape_html(base_label) if use_html else base_label
 
     mention_label = f"@{username}" if username else ""
     prefer_rp = placeholder == "randomRpUser"
@@ -238,17 +229,17 @@ def _resolve_placeholder_value(
         username_label=username or "",
         display_name=display_name,
         fallback=fallback,
-        markdown=markdown,
+        use_html=use_html,
     )
 
     if placeholder == "randomMention":
-        if markdown:
-            return _format_markdown_link(display_label, user_id)
+        if use_html:
+            return _format_html_link(display_label, user_id)
         return mention_label or display_label
 
     # randomRpUser
-    if markdown:
-        return _format_markdown_link(display_label, user_id)
+    if use_html:
+        return _format_html_link(display_label, user_id)
     return display_label
 
 
@@ -267,14 +258,14 @@ async def _apply_dynamic_placeholders(
     if not matches:
         return text, entities, None
 
-    requires_markdown = bool(entities) or any(
+    requires_html = bool(entities) or any(
         match.group(1) in {"randomMention", "randomRpUser"} for match in matches
     )
 
     if entities:
-        working_text = markdown_decoration.unparse(text, entities)
-    elif requires_markdown:
-        working_text = _escape_markdown(text)
+        working_text = html_decoration.unparse(text, entities)
+    elif requires_html:
+        working_text = _escape_html(text)
     else:
         working_text = text
 
@@ -284,18 +275,18 @@ async def _apply_dynamic_placeholders(
         language=language,
         default="unknown user",
     )
-    fallback = _escape_markdown(fallback_value) if requires_markdown else fallback_value
+    fallback = _escape_html(fallback_value) if requires_html else fallback_value
 
     argument_raw = (argument or "").strip()
     argument_value = (
-        _escape_markdown(argument_raw)
-        if requires_markdown
+        _escape_html(argument_raw)
+        if requires_html
         else argument_raw
     )
     argument_no_question_raw = argument_raw.replace("?", "").strip()
     argument_no_question = (
-        _escape_markdown(argument_no_question_raw)
-        if requires_markdown
+        _escape_html(argument_no_question_raw)
+        if requires_html
         else argument_no_question_raw
     )
 
@@ -312,7 +303,7 @@ async def _apply_dynamic_placeholders(
                 placeholder_type,
                 chat_id=chat_id,
                 fallback=fallback,
-                markdown=requires_markdown,
+                use_html=requires_html,
             )
         elif placeholder_type == "argument":
             replacement = argument_value
@@ -324,8 +315,8 @@ async def _apply_dynamic_placeholders(
     new_text_parts.append(working_text[last_index:])
     new_text = "".join(new_text_parts)
 
-    if requires_markdown:
-        return new_text, None, "Markdown"
+    if requires_html:
+        return new_text, None, "HTML"
 
     return new_text, None, None
 
@@ -367,13 +358,13 @@ def _format_trigger_label(pattern: str, match_type: str, *, language: str) -> st
         return gettext(
             "filters.trigger.regex",
             language=language,
-            default="[regex] `{pattern}`",
+            default="[regex] <code>{pattern}</code>",
             pattern=pattern,
         )
     return gettext(
         "filters.trigger.contains",
         language=language,
-        default="[contains] `{pattern}`",
+        default="[contains] <code>{pattern}</code>",
         pattern=pattern,
     )
 

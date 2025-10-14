@@ -7,7 +7,7 @@ from aiogram.types import Message, TelegramObject, User
 
 from modules.collector.utils import UserCollector
 from modules.roleplay.router import (
-    _escape_markdown,
+    _escape_html,
     _get_display_name,
     build_action_text,
     format_roleplay_profile_reference,
@@ -134,7 +134,9 @@ class RoleplayMiddleware(BaseMiddleware):
         *,
         fallback_username: Optional[str] = None,
     ) -> str:
-        action_text = build_action_text(command["action"], command.get("random_variants"))
+        action_text = _escape_html(
+            build_action_text(command["action"], command.get("random_variants"))
+        )
         actor_name = _get_display_name(chat_id, actor.id, actor.full_name)
         actor_part = format_roleplay_profile_reference(
             actor_name,
@@ -152,9 +154,9 @@ class RoleplayMiddleware(BaseMiddleware):
                 name_is_escaped=True,
             )
         elif fallback_username:
-            target_part = _escape_markdown(f"@{fallback_username}")
+            target_part = _escape_html(f"@{fallback_username}")
         else:
-            target_part = _escape_markdown("@unknown")
+            target_part = _escape_html("@unknown")
 
         return f"{command['emoji']} | {actor_part} {action_text} {target_part}"
     async def _send_media_response(self, message: Message, media: Dict[str, Any], text: str) -> None:
@@ -163,16 +165,16 @@ class RoleplayMiddleware(BaseMiddleware):
         file_id = media.get("file_id")
 
         if media_type == "photo" and file_id:
-            await target_message.reply_photo(file_id, caption=text, parse_mode="Markdown", disable_web_page_preview=True)
+            await target_message.reply_photo(file_id, caption=text, parse_mode="HTML", disable_web_page_preview=True)
         elif media_type == "animation" and file_id:
-            await target_message.reply_animation(file_id, caption=text, parse_mode="Markdown", disable_web_page_preview=True)
+            await target_message.reply_animation(file_id, caption=text, parse_mode="HTML", disable_web_page_preview=True)
         elif media_type == "video" and file_id:
-            await target_message.reply_video(file_id, caption=text, parse_mode="Markdown", disable_web_page_preview=True)
+            await target_message.reply_video(file_id, caption=text, parse_mode="HTML", disable_web_page_preview=True)
         elif media_type == "sticker" and file_id:
             await target_message.reply_sticker(file_id)
-            await target_message.reply(text, parse_mode="Markdown", disable_web_page_preview=True)
+            await target_message.reply(text, parse_mode="HTML", disable_web_page_preview=True)
         else:
-            await target_message.reply(text, parse_mode="Markdown", disable_web_page_preview=True)
+            await target_message.reply(text, parse_mode="HTML", disable_web_page_preview=True)
 
     async def _safe_delete(self, message: Message) -> None:
         try:

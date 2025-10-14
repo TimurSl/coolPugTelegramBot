@@ -1,3 +1,4 @@
+import html
 import json
 import os
 import random
@@ -152,28 +153,18 @@ def _required_level(
 moderation_db = ModerationDatabase(os.path.join(get_home_dir(), "moderation.db"))
 
 
-def _escape_markdown(text: str) -> str:
-    return (
-        text.replace("\\", "\\\\")
-        .replace("[", "\\[")
-        .replace("]", "\\]")
-        .replace("_", "\\_")
-        .replace("*", "\\*")
-        .replace("`", "\\`")
-        .replace("~", "\\~")
-        .replace("(", "\\(")
-        .replace(")", "\\)")
-    )
+def _escape_html(text: str) -> str:
+    return html.escape(text, quote=False)
 
 
 def _get_display_name(chat_id: int, user_id: int, fallback: str) -> str:
     nickname = nickname_storage.get_nickname(chat_id, user_id)
     if nickname:
-        return _escape_markdown(nickname)
+        return _escape_html(nickname)
     stored = UserCollector.get_display_name(chat_id, user_id)
     if stored:
-        return _escape_markdown(stored)
-    return _escape_markdown(fallback)
+        return _escape_html(stored)
+    return _escape_html(fallback)
 
 
 def _build_profile_link(user_id: int) -> str:
@@ -186,9 +177,9 @@ def _build_profile_link(user_id: int) -> str:
 def format_roleplay_profile_reference(
     name: str, user_id: int, *, name_is_escaped: bool = False
 ) -> str:
-    safe_name = name if name_is_escaped else _escape_markdown(name)
-    profile_link = _escape_markdown(_build_profile_link(user_id))
-    return f"[{safe_name}]({profile_link})"
+    safe_name = name if name_is_escaped else _escape_html(name)
+    profile_link = html.escape(_build_profile_link(user_id), quote=True)
+    return f'<a href="{profile_link}">{safe_name}</a>'
 
 
 async def _fetch_chat_member(message: Message, user_id: int):
@@ -389,7 +380,7 @@ async def handle_set_rp_nick(message: Message):
                 default="✅ RP nickname for {profile_reference} updated.",
                 profile_reference=profile_reference,
             ),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
 
@@ -453,7 +444,7 @@ async def handle_clear_rp_nick(message: Message):
                     default="🗑 RP nickname for {profile_reference} has been reset.",
                     profile_reference=profile_reference,
                 ),
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
     else:
         await message.answer(
@@ -712,9 +703,9 @@ async def _send_profile_response(message: Message, language: str, arg_text: str)
 
     nickname_value = nickname_storage.get_nickname(message.chat.id, target_user_id)
     if nickname_value:
-        nickname_label = _escape_markdown(nickname_value)
+        nickname_label = _escape_html(nickname_value)
     else:
-        nickname_label = _escape_markdown(
+        nickname_label = _escape_html(
             gettext(
                 "roleplay.profile.nickname.none",
                 language=language,
@@ -727,7 +718,7 @@ async def _send_profile_response(message: Message, language: str, arg_text: str)
         "roleplay.profile.header",
         language=language,
         default="📇 Profile for {name}",
-        name=_escape_markdown(target_user.full_name),
+        name=_escape_html(target_user.full_name),
     )
     nickname_line = gettext(
         "roleplay.profile.nickname",
@@ -774,7 +765,7 @@ async def _send_profile_response(message: Message, language: str, arg_text: str)
                     language=language,
                     default="    • #{award_id}: {text}",
                     award_id=award["id"],
-                    text=_escape_markdown(award.get("text", "")),
+                    text=_escape_html(award.get("text", "")),
                 )
             )
         awards_block = "\n".join(awards_lines)
@@ -795,12 +786,12 @@ async def _send_profile_response(message: Message, language: str, arg_text: str)
         await message.answer_photo(
             avatar_file_id,
             caption=profile_text,
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     else:
         await message.answer(
             profile_text,
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
 
