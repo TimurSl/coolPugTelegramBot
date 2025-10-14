@@ -108,15 +108,6 @@ Supported placeholders inside filter templates:
 | `/nodelete`         | Explicitly disable auto-delete for a command. |
 | `/autodeletelist`   | Show the configured auto-delete commands. |
 
-### Entertainment
-
-| Command            | Description |
-|--------------------|-------------|
-| `/joke`            | Send a random programming joke. |
-| `/amd`, `/intel`   | Send themed stickers. |
-| `/perdoon`, `/politics`, `/murzik`, `/holos` | Send curated memes. |
-| `/quran`, `/bible` | Fetch inspirational verses. |
-
 ### Roleplay
 
 | Command            | Description |
