@@ -2690,7 +2690,7 @@ class AdvancedModerationModule:
             sort_key = name.casefold() if name else safe_label.casefold()
             display_text = mention if use_mentions else safe_label
             if is_admin:
-                display_text = f"⭐️ {display_text}"
+                display_text = f"🛡 {display_text}"
             levels_to_names.setdefault(level, []).append((sort_key, display_text))
 
         lines: list[str] = []
