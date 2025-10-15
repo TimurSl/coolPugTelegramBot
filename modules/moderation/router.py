@@ -2699,7 +2699,7 @@ class AdvancedModerationModule:
                 stars=stars,
                 level=level,
             )
-            lines.append(_escape_html(header))
+            lines.append(header)
             for _, display in sorted(entries, key=lambda item: item[0]):
                 lines.append(display)
 
