@@ -2701,7 +2701,8 @@ class AdvancedModerationModule:
             )
             lines.append(header)
             for _, display in sorted(entries, key=lambda item: item[0]):
-                lines.append(display)
+                safe_display = escape(display)
+                lines.append(safe_display)
 
         await message.reply("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
@@ -2791,12 +2792,13 @@ class AdvancedModerationModule:
             "⭐️ Level {level} members:",
             level=level,
         )
-        lines = [_escape_html(header)]
+        lines = [header]
+        
         for _, display, is_admin in sorted(matches, key=lambda item: item[0]):
             if is_admin:
-                lines.append(f"⭐️ {display}")
+                lines.append(f"⭐️ {html.escape(display)}")
             else:
-                lines.append(display)
+                lines.append(html.escape(display))
         await message.reply("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
     async def clean_warns(self, user_id: int, chat_id: int):
