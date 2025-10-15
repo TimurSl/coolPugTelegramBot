@@ -991,7 +991,7 @@ class AdvancedModerationModule:
             if level <= 0 and not include_level_zero:
                 return
             name = await self._resolve_roleplay_name(message, user_id)
-            safe_label = _escape_html(name)
+            safe_label = html.escape(name)
             mention = _format_profile_reference(safe_label, user_id)
             user_entries[user_id] = (level, name, mention, safe_label, is_admin)
 
