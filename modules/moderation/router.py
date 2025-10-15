@@ -1001,7 +1001,7 @@ class AdvancedModerationModule:
             key, separator, value = argument.partition("=")
             if separator and key.casefold() == "mention":
                 return self._parse_boolean_argument(value)
-        return False
+        return True
 
     async def _collect_mod_entries(
         self,
