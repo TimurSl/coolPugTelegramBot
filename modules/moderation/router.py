@@ -2701,8 +2701,10 @@ class AdvancedModerationModule:
             )
             lines.append(header)
             for _, display in sorted(entries, key=lambda item: item[0]):
-                safe_display = escape(display)
-                lines.append(safe_display)
+                if "<a href=" in display:
+                    lines.append(display)
+                else:
+                    lines.append(escape(display))
 
         await message.reply("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
@@ -2796,9 +2798,14 @@ class AdvancedModerationModule:
         
         for _, display, is_admin in sorted(matches, key=lambda item: item[0]):
             if is_admin:
-                lines.append(f"⭐️ {html.escape(display)}")
+                prefix = "🛡 "
             else:
-                lines.append(html.escape(display))
+                prefix = ""
+
+            if "<a href=" in display:
+                lines.append(f"{prefix}{display}")
+            else:
+                lines.append(f"{prefix}{escape(display)}")
         await message.reply("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
     async def clean_warns(self, user_id: int, chat_id: int):
