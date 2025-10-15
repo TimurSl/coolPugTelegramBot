@@ -37,3 +37,21 @@ def test_moderator_display_admin_prefix():
 
     assert entry.render(use_mentions=False) == "🛡 Admin"
     assert entry.render(use_mentions=True) == "🛡 Admin"
+
+
+def test_extract_mention_preference_defaults_to_true():
+    module = AdvancedModerationModule()
+
+    assert module._extract_mention_preference(()) is True
+
+
+def test_extract_mention_preference_handles_off():
+    module = AdvancedModerationModule()
+
+    assert module._extract_mention_preference(("mention=off",)) is False
+
+
+def test_extract_mention_preference_invalid_value():
+    module = AdvancedModerationModule()
+
+    assert module._extract_mention_preference(("mention=sometimes",)) is None

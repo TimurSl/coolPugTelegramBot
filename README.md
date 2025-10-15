@@ -84,7 +84,7 @@ Use `/help` in chat to access an interactive version of this documentation.
 | `/restrict`          | List members with a specific moderation level. |
 | `/restrictcommand`   | Restrict commands to a minimum level. |
 | `/award` / `/delreward` | Manage custom awards. |
-| `/mods`              | List moderators with optional mentions. |
+| `/mods`              | List moderators with profile links (use `mention=off` to show plain names). |
 
 ### Filters
 
