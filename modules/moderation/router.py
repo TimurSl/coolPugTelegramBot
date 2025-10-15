@@ -1,9 +1,11 @@
-﻿import logging
+import logging
 import sqlite3
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import timedelta, datetime
 from typing import Optional, Sequence
 import html
+import re
 import textwrap
 
 from aiogram import Bot, Router, F
@@ -67,6 +69,25 @@ def _strip_leading_at(text: str) -> str:
     if text.startswith("@"):
         return text[1:]
     return text
+
+
+@dataclass(frozen=True)
+class ModeratorDisplay:
+    level: int
+    raw_text: str
+    plain_label: str
+    mention_label: str
+    is_admin: bool
+
+    @property
+    def sort_key(self) -> str:
+        return self.raw_text.casefold()
+
+    def render(self, use_mentions: bool) -> str:
+        label = self.mention_label if use_mentions else self.plain_label
+        if self.is_admin:
+            return f"🛡 {label}"
+        return label
 
 
 class AdvancedModerationModule:
@@ -880,6 +901,17 @@ class AdvancedModerationModule:
         )
         return f'<a href="{_build_profile_link(user_id)}">{safe_display}</a>'
 
+    @staticmethod
+    def _strip_link_markup(value: str) -> str:
+        if not value:
+            return ""
+
+        match = re.fullmatch(r"<a\s+[^>]*>(?P<text>.*?)</a>", value, flags=re.DOTALL)
+        if match:
+            return html.unescape(match.group("text"))
+
+        return html.unescape(value)
+
     async def _resolve_roleplay_name(self, message: Message, user_id: int) -> str:
         nickname = nickname_storage.get_nickname(message.chat.id, user_id)
         if nickname:
@@ -977,19 +1009,25 @@ class AdvancedModerationModule:
         bot: Bot,
         *,
         include_level_zero: bool = False,
-    ) -> dict[int, tuple[int, str, str, str, bool]]:
+    ) -> dict[int, ModeratorDisplay]:
         chat_id = message.chat.id
 
         stored_levels = moderation_levels.get_levels_for_chat(chat_id)
-        user_entries: dict[int, tuple[int, str, str, str, bool]] = {}
+        user_entries: dict[int, ModeratorDisplay] = {}
 
         async def add_entry(user_id: int, level: int, *, is_admin: bool) -> None:
             if level <= 0 and not include_level_zero:
                 return
             name = await self._resolve_roleplay_name(message, user_id)
-            safe_label = html.escape(name)
-            mention = name
-            user_entries[user_id] = (level, name, mention, safe_label, is_admin)
+            raw_text = self._strip_link_markup(name) or str(user_id)
+            plain_label = html.escape(raw_text)
+            user_entries[user_id] = ModeratorDisplay(
+                level=level,
+                raw_text=raw_text,
+                plain_label=plain_label,
+                mention_label=name,
+                is_admin=is_admin,
+            )
 
         try:
             administrators = await bot.get_chat_administrators(chat_id)
@@ -2673,17 +2711,13 @@ class AdvancedModerationModule:
             )
             return
 
-        levels_to_names: dict[int, list[tuple[str, str]]] = {}
-        for _, (level, name, mention, safe_label, is_admin) in user_entries.items():
-            sort_key = name.casefold() if name else safe_label.casefold()
-            display_text = mention if use_mentions else safe_label
-            if is_admin:
-                display_text = f"🛡 {display_text}"
-            levels_to_names.setdefault(level, []).append((sort_key, display_text))
+        levels_to_entries: dict[int, list[ModeratorDisplay]] = {}
+        for entry in user_entries.values():
+            levels_to_entries.setdefault(entry.level, []).append(entry)
 
         lines: list[str] = []
         for level in range(5, 0, -1):
-            entries = levels_to_names.get(level)
+            entries = levels_to_entries.get(level)
             if not entries:
                 continue
 
@@ -2696,8 +2730,8 @@ class AdvancedModerationModule:
                 level=level,
             )
             lines.append(header)
-            for _, display in sorted(entries, key=lambda item: item[0]):
-                lines.append(display)
+            for entry in sorted(entries, key=lambda item: item.sort_key):
+                lines.append(entry.render(use_mentions))
 
         await message.reply("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
@@ -2760,13 +2794,9 @@ class AdvancedModerationModule:
             include_level_zero=(level == 0),
         )
         matches = [
-            (
-                name.casefold() if name else safe_label.casefold(),
-                mention if use_mentions else safe_label,
-                is_admin,
-            )
-            for stored_level, name, mention, safe_label, is_admin in user_entries.values()
-            if stored_level == level
+            entry
+            for entry in user_entries.values()
+            if entry.level == level
         ]
 
         if not matches:
@@ -2789,14 +2819,8 @@ class AdvancedModerationModule:
         )
         lines = [header]
         
-        for _, display, is_admin in sorted(matches, key=lambda item: item[0]):
-            if is_admin:
-                prefix = "🛡 "
-            else:
-                prefix = ""
-
-        
-            lines.append(f"{prefix}{display}")
+        for entry in sorted(matches, key=lambda item: item.sort_key):
+            lines.append(entry.render(use_mentions))
         await message.reply("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
     async def clean_warns(self, user_id: int, chat_id: int):
