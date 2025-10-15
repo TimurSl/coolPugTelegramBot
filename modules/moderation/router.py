@@ -2701,10 +2701,7 @@ class AdvancedModerationModule:
             )
             lines.append(header)
             for _, display in sorted(entries, key=lambda item: item[0]):
-                if "<a href=" in display:
-                    lines.append(display)
-                else:
-                    lines.append(html.escape(display))
+                lines.append(display)
 
         await message.reply("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
@@ -2802,10 +2799,8 @@ class AdvancedModerationModule:
             else:
                 prefix = ""
 
-            if "<a href=" in display:
-                lines.append(f"{prefix}{display}")
-            else:
-                lines.append(f"{prefix}{html.escape(display)}")
+        
+            lines.append(f"{prefix}{display}")
         await message.reply("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
     async def clean_warns(self, user_id: int, chat_id: int):
