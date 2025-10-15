@@ -58,12 +58,8 @@ def _format_profile_reference(label: str, user_id: int) -> str:
     """HTML-ссылка на профиль"""
     profile_link = _build_profile_link(user_id)
     # простое html-экранирование имени
-    safe_label = (
-        label.replace("&", "&amp;")
-             .replace("<", "&lt;")
-             .replace(">", "&gt;")
-    )
-    return f'<a href="{profile_link}">{safe_label}</a>'
+    
+    return f'<a href="{profile_link}">{label}</a>'
 
 
 
