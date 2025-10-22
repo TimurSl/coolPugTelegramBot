@@ -192,7 +192,7 @@ async def handle_delete_award(
         award_id=award_id,
         target=target_name,
     )
-    await message.reply(response, parse_mode=None)
+    await message.reply(response, parse_mode="HTML")
 
 
 # The imports are intentionally placed at the end to avoid circular dependencies

@@ -307,9 +307,7 @@ class AdvancedModerationModule:
         )
 
         created_text = self._format_datetime(report.get("created_at"))
-        message_body = html.escape(report.get("message_text") or "").replace(
-            "\n", "<br>"
-        )
+        message_body = html.escape(report.get("message_text") or "")
         if not message_body:
             message_body = self._t(
                 "moderation.report.selection.no_text",
@@ -450,9 +448,8 @@ class AdvancedModerationModule:
             fallback=str(appeal.get("user_id") or "unknown"),
         )
         created_text = self._format_datetime(appeal.get("created_at"))
-        description = html.escape(appeal.get("description") or "").replace(
-            "\n", "<br>"
-        )
+        description = html.escape(appeal.get("description") or "")
+
         if not description:
             description = self._t(
                 "moderation.report.selection.no_description",
@@ -1998,7 +1995,7 @@ class AdvancedModerationModule:
             except TelegramAPIError:
                 pass
 
-        await message.reply(response, parse_mode="HTML")
+        await message.reply(response, parse_mode="HTML", disable_web_page_preview=True)
 
     async def handle_warnlist(self, message: Message, bot: Bot):
         language = self._language(message)

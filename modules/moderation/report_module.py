@@ -153,14 +153,14 @@ async def handle_reports_overview(
     raw_reports = module.db.list_reports()
     reports = await module._filter_reports_for_admin(bot, message.from_user.id, raw_reports)
     stored_levels = moderation_levels.get_chats_for_user(message.from_user.id)
-    is_admin_any = bool(reports) or any(level >= 1 for level in stored_levels.values())
+    is_admin_any = any(level >= 2 for level in stored_levels.values())
 
     if not is_admin_any:
         await message.answer(
             module._t(
                 "moderation.report.not_admin",
                 language,
-                "❌ You are not a moderator in any tracked chats.",
+                "❌ You are not a moderator in any tracked chats. You must be at least level 2 to view reports.",
             ),
             parse_mode=None,
         )
