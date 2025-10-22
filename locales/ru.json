@@ -277,5 +277,9 @@
   "moderation.mutelist.header": "<b>Активные мюты:</b>",
   "moderation.mutelist.entry": "{index}. {user} — {duration} (от {admin})",
   "moderation.mutelist.entry.reason": " — причина: {reason}",
-  "moderation.award.delete_usage": "Использование: /delreward <award id>."
+  "moderation.award.delete_usage": "Использование: /delreward <award id>.",
+  "ai.ask.usage": "Использование: /ask <ваш вопрос>",
+  "ai.ask.empty_reply": "Мне пока нечего добавить.",
+  "ai.ask.memory.header": "🧠 Недавние воспоминания:",
+  "ai.ask.memory.entry": "• {user} → {ai}"
 }

@@ -279,5 +279,10 @@
   "moderation.mutelist.entry.reason": " — причина: {reason}",
   "moderation.award.delete_usage": "Використання: /delreward <award id>.",
   "moderation.report.target_is_bot": "❌ You cannot report bot messages.",
-  "moderation.report.received": "✅ Report submitted. Moderators will review it in their direct messages."
+  "moderation.report.received": "✅ Report submitted. Moderators will review it in their direct messages.",
+  "ai.ask.usage": "Використання: /ask <ваше питання>",
+  "ai.ask.empty_reply": "Мені поки нічого додати.",
+  "ai.ask.memory.header": "🧠 Недавні спогади:",
+  "ai.ask.memory.entry": "• {user} → {ai}",
+  "moderation.mediamute.response": "🔕 <b>Media restricted</b>\n👤 User: {user_id}\n⏱ Duration: {duration}\n📝 Reason: {reason}"
 }

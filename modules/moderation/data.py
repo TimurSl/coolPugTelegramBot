@@ -2,7 +2,7 @@ import sqlite3
 import logging
 from dataclasses import field, dataclass
 from datetime import datetime, timedelta
-from typing import Optional, List, Sequence, Tuple
+from typing import Optional, List, Sequence, Tuple, Union
 from pathlib import Path
 
 
@@ -533,16 +533,27 @@ class ModerationDatabase:
         return entry
 
     def deactivate_actions_for_user(
-        self, chat_id: int, user_id: int, action_type: str
+            self, chat_id: int, user_id: int, action_types: Union[str, Sequence[str]]
     ) -> None:
+        if isinstance(action_types, str):
+            action_seq: Sequence[str] = (action_types,)
+        else:
+            action_seq = tuple(action_types)
+
+        if not action_seq:
+            return
+
+        placeholders = ",".join("?" for _ in action_seq)
+        params: list[object] = [chat_id, user_id, *action_seq]
+
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
-                '''
+                f'''
                 UPDATE moderation_actions
                 SET active = FALSE
-                WHERE chat_id = ? AND user_id = ? AND action_type = ? AND active = TRUE
+                WHERE chat_id = ? AND user_id = ? AND action_type IN ({placeholders}) AND active = TRUE
                 ''',
-                (chat_id, user_id, action_type),
+                params,
             )
 
     def deactivate_actions_by_ids(self, action_ids: Sequence[int]) -> None:
@@ -555,34 +566,60 @@ class ModerationDatabase:
                 tuple(action_ids),
             )
 
-    def clean_actions_for_chat(self, chat_id: int, action_type: str) -> int:
-        """Deactivate all actions of a specific type for a chat."""
+    def clean_actions_for_chat(
+            self, chat_id: int, action_types: Union[str, Sequence[str]]
+    ) -> int:
+        """Deactivate all actions of specific types for a chat."""
+
+        if isinstance(action_types, str):
+            action_seq: Sequence[str] = (action_types,)
+        else:
+            action_seq = tuple(action_types)
+
+        if not action_seq:
+            return 0
+
+        placeholders = ",".join("?" for _ in action_seq)
+        params: list[object] = [chat_id, *action_seq]
 
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                '''
+                f'''
                 UPDATE moderation_actions
                 SET active = FALSE
-                WHERE chat_id = ? AND action_type = ? AND active = TRUE
+                WHERE chat_id = ? AND action_type IN ({placeholders}) AND active = TRUE
                 ''',
-                (chat_id, action_type),
+                params,
             )
             affected = cursor.rowcount or 0
 
         return int(affected)
 
-    def list_active_actions(self, chat_id: int, action_type: str) -> List[dict]:
+    def list_active_actions(
+        self, chat_id: int, action_types: Union[str, Sequence[str]]
+    ) -> List[dict]:
+        if isinstance(action_types, str):
+            action_seq: Sequence[str] = (action_types,)
+        else:
+            action_seq = tuple(action_types)
+
+        if not action_seq:
+            return []
+
+        placeholders = ",".join("?" for _ in action_seq)
+        params: list[object] = [chat_id, *action_seq]
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                '''
-                SELECT id, user_id, admin_id, reason, duration_seconds, timestamp, expires_at
+                f'''
+                SELECT id, action_type, user_id, admin_id, reason, duration_seconds, timestamp, expires_at
                 FROM moderation_actions
-                WHERE chat_id = ? AND action_type = ? AND active = TRUE
+                WHERE chat_id = ? AND action_type IN ({placeholders}) AND active = TRUE
                 ORDER BY datetime(timestamp) DESC, id DESC
                 ''',
-                (chat_id, action_type),
+                params,
             )
             columns = [desc[0] for desc in cursor.description]
             rows = cursor.fetchall()

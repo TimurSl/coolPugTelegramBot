@@ -75,7 +75,8 @@ Use `/help` in chat to access an interactive version of this documentation.
 |----------------------|-------------|
 | `/ban`               | Ban a user (supports duration and reason). |
 | `/unban`             | Remove a ban. |
-| `/mute`              | Temporarily or permanently mute a user. |
+| `/mute`              | Temporarily or permanently mute a user from sending messages. |
+| `/mediamute`         | Remove media permissions while allowing text messages. |
 | `/unmute`            | Remove mute restrictions. |
 | `/warn`              | Issue a warning. Automatically mutes after three warnings. |
 | `/unwarn`            | Remove a warning. |
@@ -123,6 +124,13 @@ Supported placeholders inside filter templates:
 |----------------|-------------|
 | `/language`    | Change the bot language for the current chat or private conversation. |
 | `/top`         | Show the top message senders for the current chat. |
+
+### AI assistant
+
+| Command        | Description |
+|----------------|-------------|
+| `/ask`         | Get a response from the built-in assistant with recent memory context. |
+
 
 ## Localisation
 
