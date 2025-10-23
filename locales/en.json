@@ -292,5 +292,8 @@
   "ai.ask.empty_reply": "I do not have anything to add right now.",
   "ai.ask.memory.header": "🧠 Recent memories:",
   "ai.ask.memory.entry": "• {user} → {ai}",
-  "moderation.mediamute.response": "🔕 <b>Media restricted</b>\n👤 User: {user_id}\n⏱ Duration: {duration}\n📝 Reason: {reason}"
+  "moderation.mediamute.response": "🔕 <b>Media restricted</b>\n👤 User: {user_id}\n⏱ Duration: {duration}\n📝 Reason: {reason}",
+  "moderation.mediamute.usage": "❌ Invalid usage! Examples:\n/mediamute @user 1h spam\n/mediamute 30m @user\n/mediamute @user - Remove media permissions indefinitely",
+  "moderation.unmediamute.success": "🔊 User {user_id} has been media-unmuted.",
+  "moderation.mutelist.empty": "No users are currently muted."
 }

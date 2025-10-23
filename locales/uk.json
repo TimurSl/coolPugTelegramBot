@@ -284,5 +284,8 @@
   "ai.ask.empty_reply": "Мені поки нічого додати.",
   "ai.ask.memory.header": "🧠 Недавні спогади:",
   "ai.ask.memory.entry": "• {user} → {ai}",
-  "moderation.mediamute.response": "🔕 <b>Media restricted</b>\n👤 User: {user_id}\n⏱ Duration: {duration}\n📝 Reason: {reason}"
+  "moderation.mediamute.response": "🔕 <b>Медіа обмежено</b>\n👤 Користувач: {user_id}\n⏱ Тривалість: {duration}\n📝 Причина: {reason}",
+  "moderation.mediamute.usage": "❌ Неправильне використання! Приклади:\n/mediamute @user 1h спам\n/mediamute 30m @user\n/mediamute @user - Обмежити медіа безстроково",
+  "moderation.unmediamute.success": "🔊 Користувач {user_id} знову може надсилати медіа.",
+  "moderation.mutelist.empty": "No users are currently muted."
 }

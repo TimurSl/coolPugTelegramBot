@@ -193,6 +193,20 @@ class ModerationDatabase:
 
             logging.info("Database initialized")
 
+    def has_active_action(self, user_id: int, chat_id: int, action_type: str) -> bool:
+        """Check if a user currently has an active moderation action of given type."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''
+                SELECT 1 FROM moderation_actions
+                WHERE user_id = ? AND chat_id = ? AND action_type = ? AND active = TRUE
+                LIMIT 1
+                ''',
+                (user_id, chat_id, action_type),
+            )
+            return cursor.fetchone() is not None
+
     def _ensure_column_exists(
         self, conn: sqlite3.Connection, table: str, column: str, definition: str
     ) -> None:

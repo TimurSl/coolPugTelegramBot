@@ -510,6 +510,8 @@ class AdvancedModerationModule:
         markup = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
         return "\n".join(details), markup
 
+
+
     async def _refresh_reports_overview_message(
         self,
         *,
@@ -1736,6 +1738,35 @@ class AdvancedModerationModule:
                     )
                 )
 
+    async def build_combined_permissions(self, db: ModerationDatabase, chat_id: int, user_id: int) -> ChatPermissions:
+        """Combine mute and mediamute into a single effective permission set."""
+        permissions = ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=True,
+            can_send_documents=True,
+            can_send_photos=True,
+            can_send_videos=True,
+            can_send_video_notes=True,
+            can_send_voice_notes=True,
+            can_send_polls=True,
+            can_add_web_page_previews=True,
+        )
+
+        if db.has_active_action(user_id, chat_id, "mute"):
+            permissions.can_send_messages = False
+            permissions.can_send_other_messages = False
+
+        if db.has_active_action(user_id, chat_id, "mediamute"):
+            permissions.can_send_audios = False
+            permissions.can_send_documents = False
+            permissions.can_send_photos = False
+            permissions.can_send_videos = False
+            permissions.can_send_video_notes = False
+            permissions.can_send_voice_notes = False
+            permissions.can_send_polls = False
+            permissions.can_add_web_page_previews = False
+        return permissions
+
     async def handle_mute(self, message: Message, bot: Bot):
         """Handle /mute command"""
         logging.info("Handling /mute command")
@@ -1801,22 +1832,7 @@ class AdvancedModerationModule:
         until_date = None
         if duration:
             until_date = datetime.now() + duration
-
-            # Define mute permissions (disable messaging, preserve media settings)
-        mute_permissions = ChatPermissions(
-            can_send_messages=False,
-            can_send_other_messages=False,
-        )
-
         try:
-            await bot.restrict_chat_member(
-                chat_id=message.chat.id,
-                user_id=user_id,
-                permissions=mute_permissions,
-                until_date=until_date
-            )
-
-            # Save to database
             action = ModerationAction(
                 action_type="mute",
                 user_id=user_id,
@@ -1827,6 +1843,17 @@ class AdvancedModerationModule:
                 expires_at=until_date
             )
             self.db.add_action(action)
+
+            permissions = await self.build_combined_permissions(self.db, message.chat.id, user_id)
+
+            await bot.restrict_chat_member(
+                chat_id=message.chat.id,
+                user_id=user_id,
+                permissions=permissions,
+                use_independent_chat_permissions=True,
+                until_date=until_date,
+            )
+
 
             duration_text = self._format_duration_text(duration, language)
 
@@ -1941,25 +1968,7 @@ class AdvancedModerationModule:
         if duration:
             until_date = datetime.now() + duration
 
-        media_permissions = ChatPermissions(
-            can_send_audios=False,
-            can_send_documents=False,
-            can_send_photos=False,
-            can_send_videos=False,
-            can_send_video_notes=False,
-            can_send_voice_notes=False,
-            can_send_polls=False,
-            can_add_web_page_previews=False,
-        )
-
         try:
-            await bot.restrict_chat_member(
-                chat_id=message.chat.id,
-                user_id=user_id,
-                permissions=media_permissions,
-                until_date=until_date,
-            )
-
             action = ModerationAction(
                 action_type="mediamute",
                 user_id=user_id,
@@ -1970,6 +1979,16 @@ class AdvancedModerationModule:
                 expires_at=until_date,
             )
             self.db.add_action(action)
+
+            permissions = await self.build_combined_permissions(self.db, message.chat.id, user_id)
+
+            await bot.restrict_chat_member(
+                chat_id=message.chat.id,
+                user_id=user_id,
+                permissions=permissions,
+                use_independent_chat_permissions=True,
+                until_date=until_date,
+            )
 
             duration_text = self._format_duration_text(duration, language)
             response = self._t(
@@ -2455,25 +2474,17 @@ class AdvancedModerationModule:
             )
             return
 
-        # Restore full permissions
-        full_permissions = ChatPermissions(
-            can_send_messages=True,
-            can_send_audios=True,
-            can_send_documents=True,
-            can_send_photos=True,
-            can_send_videos=True,
-            can_send_video_notes=True,
-            can_send_voice_notes=True,
-            can_send_polls=True,
-            can_send_other_messages=True,
-            can_add_web_page_previews=True
-        )
-
         try:
+            self.db.deactivate_actions_for_user(
+                message.chat.id, user_id, ("mute",)
+            )
+            permissions = await self.build_combined_permissions(self.db, message.chat.id, user_id)
+
             await bot.restrict_chat_member(
                 chat_id=message.chat.id,
                 user_id=user_id,
-                permissions=full_permissions
+                permissions=permissions,
+                use_independent_chat_permissions=True,
             )
 
             await message.reply(
@@ -2485,9 +2496,87 @@ class AdvancedModerationModule:
                 )
             )
 
-            self.db.deactivate_actions_for_user(
-                message.chat.id, user_id, ("mute", "mediamute")
+
+            self.db.add_action(
+                ModerationAction(
+                    action_type="unmute",
+                    user_id=user_id,
+                    admin_id=message.from_user.id,
+                    chat_id=message.chat.id,
+                ),
+                active=False,
             )
+
+        except TelegramAPIError as e:
+            await message.reply(
+                self._t(
+                    "moderation.unmute.failure",
+                    language,
+                    "❌ Failed to unmute user: {error}",
+                    error=e,
+                )
+            )
+
+    async def handle_unmediamute(self, message: Message, bot: Bot):
+        """Handle /unmute command"""
+        language = self._language(message)
+        command_args = message.text.split(' ', 1)[1] if len(message.text.split(' ', 1)) > 1 else ""
+        parsed = ModerationArgParser.parse_moderation_args(message, command_args)
+
+        if not parsed['success'] or not parsed['user_id']:
+            await message.reply(
+                self._t(
+                    "moderation.unmute.usage",
+                    language,
+                    "❌ Please specify a user to unmute.",
+                )
+            )
+            return
+
+        user_id = parsed['user_id']
+
+        required_level, command_display = self._command_requirement(
+            message,
+            default_level=1,
+            canonical="unmute",
+        )
+        actor_level, _ = await self._get_member_level(message, message.from_user.id)
+        if actor_level < required_level:
+            await message.reply(
+                self._t(
+                    "moderation.command_restrict.denied",
+                    language,
+                    "❌ Only level {level}+ members can use {command}.",
+                    level=required_level,
+                    command=command_display,
+                ),
+                parse_mode=None,
+            )
+            return
+
+        try:
+            self.db.deactivate_actions_for_user(
+                message.chat.id, user_id, ("mediamute",)
+            )
+            permissions = await self.build_combined_permissions(self.db, message.chat.id, user_id)
+
+            await bot.restrict_chat_member(
+                chat_id=message.chat.id,
+                user_id=user_id,
+                permissions=permissions,
+                use_independent_chat_permissions=True,
+            )
+
+            await message.reply(
+                self._t(
+                    "moderation.unmediamute.success",
+                    language,
+                    "🔊 User {user_id} has been media-unmuted.",
+                    user_id=user_id,
+                )
+            )
+
+
             self.db.add_action(
                 ModerationAction(
                     action_type="unmute",
@@ -2887,7 +2976,7 @@ class AdvancedModerationModule:
                     language,
                     "❌ Level must be a number between 0 and 5.",
                 ),
-                parse_mode=None, 
+                parse_mode=None,
             )
             return
 
@@ -2946,7 +3035,7 @@ class AdvancedModerationModule:
             level=level,
         )
         lines = [header]
-        
+
         for entry in sorted(matches, key=lambda item: item.sort_key):
             lines.append(entry.render(use_mentions))
         await message.reply("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
@@ -3147,3 +3236,7 @@ async def kick_handler(message: Message, bot: Bot):
 @router.message(Command("mediamute"))
 async def mediamute_handler(message: Message, bot: Bot):
     await moderation_module.handle_media_mute(message, bot)
+
+@router.message(Command("unmediamute"))
+async def unmediamute_handler(message: Message, bot: Bot):
+    await moderation_module.handle_unmediamute(message, bot)
