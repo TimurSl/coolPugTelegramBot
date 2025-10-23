@@ -55,9 +55,6 @@ class _ASTInspector(ast.NodeVisitor):
         if self.reason is None:
             self.reason = reason
 
-    def visit_Import(self, node: ast.Import) -> None:
-        self._ban("import")
-        # no need to go deeper
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         self._ban("import_from")
     def visit_Call(self, node: ast.Call) -> None:
