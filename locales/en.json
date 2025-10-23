@@ -295,5 +295,9 @@
   "moderation.mediamute.response": "🔕 <b>Media restricted</b>\n👤 User: {user_id}\n⏱ Duration: {duration}\n📝 Reason: {reason}",
   "moderation.mediamute.usage": "❌ Invalid usage! Examples:\n/mediamute @user 1h spam\n/mediamute 30m @user\n/mediamute @user - Remove media permissions indefinitely",
   "moderation.unmediamute.success": "🔊 User {user_id} has been media-unmuted.",
-  "moderation.mutelist.empty": "No users are currently muted."
+  "moderation.mutelist.empty": "No users are currently muted.",
+  "executor.usage": "Usage: /exec <python code>",
+  "executor.forbidden": "🚫 Disallowed operation detected.",
+  "executor.no_output": "(no output)",
+  "ai.ask.prompt_too_long": "⚠️ Your prompt is too long. Please limit it to 500 characters."
 }

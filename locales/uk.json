@@ -287,5 +287,9 @@
   "moderation.mediamute.response": "🔕 <b>Медіа обмежено</b>\n👤 Користувач: {user_id}\n⏱ Тривалість: {duration}\n📝 Причина: {reason}",
   "moderation.mediamute.usage": "❌ Неправильне використання! Приклади:\n/mediamute @user 1h спам\n/mediamute 30m @user\n/mediamute @user - Обмежити медіа безстроково",
   "moderation.unmediamute.success": "🔊 Користувач {user_id} знову може надсилати медіа.",
-  "moderation.mutelist.empty": "No users are currently muted."
+  "moderation.mutelist.empty": "No users are currently muted.",
+  "executor.usage": "Usage: /exec <python code>",
+  "executor.forbidden": "🚫 Disallowed operation detected.",
+  "executor.no_output": "(no output)",
+  "ai.ask.prompt_too_long": "⚠️ Your prompt is too long. Please limit it to 500 characters."
 }

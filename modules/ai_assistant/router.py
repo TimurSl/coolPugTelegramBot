@@ -207,6 +207,18 @@ class AIAssistantModule(Module):
             return
 
         previous_memories = self._memory.get_recent(user.id, limit=3)
+        if len(prompt) > 500:
+            await message.reply(
+                gettext(
+                    "ai.ask.prompt_too_long",
+                    language=language,
+                    default="⚠️ Your prompt is too long. Please limit it to 500 characters.",
+                ),
+                parse_mode=None,
+            )
+            return
+
+
         payload = self._call_ai(prompt, previous_memories)
 
         safe_message = self._compose_message(payload, previous_memories, language)
