@@ -291,5 +291,19 @@
   "executor.usage": "Usage: /exec <python code>",
   "executor.forbidden": "🚫 Disallowed operation detected.",
   "executor.no_output": "(no output)",
-  "ai.ask.prompt_too_long": "⚠️ Your prompt is too long. Please limit it to 500 characters."
+  "ai.ask.prompt_too_long": "⚠️ Your prompt is too long. Please limit it to 500 characters.",
+  "ai.ask.disabled": "🚫 ІІ-асистент вимкнено в цьому чаті.",
+  "ai.ask.rate_limited": "⏳ Забагато запитів до ІІ. Спробуйте ще раз через {seconds} с.",
+  "executor.blacklisted": "🚫 Виконання коду вимкнено в цьому чаті.",
+  "blacklist.not_authorized": "❌ Лише адміністратори чату можуть змінювати обмеження.",
+  "blacklist.usage": "Використання: /blacklist <assistant|executor> <on|off>. {summary}",
+  "blacklist.unknown_feature": "❌ Невідома функція '{feature}'. Використовуйте assistant або executor.",
+  "blacklist.invalid_action": "Вкажіть 'on' або 'off'. {summary}",
+  "blacklist.status.blocked": "заблоковано",
+  "blacklist.status.allowed": "дозволено",
+  "blacklist.feature.assistant": "ІІ-асистент",
+  "blacklist.feature.executor": "Виконавець коду",
+  "blacklist.updated": "✅ {feature} тепер {status} у цьому чаті.",
+  "blacklist.summary.none": "Усі функції дозволені.",
+  "blacklist.summary.blocked": "Заблоковано: {features}."
 }

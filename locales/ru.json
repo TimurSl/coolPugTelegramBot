@@ -283,5 +283,20 @@
   "ai.ask.memory.header": "🧠 Недавние воспоминания:",
   "ai.ask.memory.entry": "• {user} → {ai}",
   "moderation.mediamute.response": "🔕 <b>Медиа ограничено</b>\n👤 Пользователь: {user_id}\n⏱ Длительность: {duration}\n📝 Причина: {reason}",
-  "moderation.mediamute.usage": "❌ Неправильное использование! Примеры:\n/mediamute @user 1h спам\n/mediamute 30m @user\n/mediamute @user - Запретить медиа навсегда"
+  "moderation.mediamute.usage": "❌ Неправильное использование! Примеры:\n/mediamute @user 1h спам\n/mediamute 30m @user\n/mediamute @user - Запретить медиа навсегда",
+  "ai.ask.disabled": "🚫 ИИ-ассистент отключён в этом чате.",
+  "ai.ask.rate_limited": "⏳ Слишком много запросов к ИИ. Попробуйте снова через {seconds} с.",
+  "executor.blacklisted": "🚫 Выполнение кода отключено в этом чате.",
+  "blacklist.not_authorized": "❌ Только администраторы чата могут менять ограничения.",
+  "blacklist.usage": "Использование: /blacklist <assistant|executor> <on|off>. {summary}",
+  "blacklist.unknown_feature": "❌ Неизвестная функция '{feature}'. Используйте assistant или executor.",
+  "blacklist.invalid_action": "Укажите 'on' или 'off'. {summary}",
+  "blacklist.status.blocked": "заблокирована",
+  "blacklist.status.allowed": "разрешена",
+  "blacklist.feature.assistant": "ИИ-ассистент",
+  "blacklist.feature.executor": "Исполнитель кода",
+  "blacklist.updated": "✅ {feature} теперь {status} в этом чате.",
+  "blacklist.summary.none": "Все функции разрешены.",
+  "blacklist.summary.blocked": "Заблокировано: {features}.",
+
 }

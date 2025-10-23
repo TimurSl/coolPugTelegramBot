@@ -12,6 +12,7 @@ from aiogram.types import Message
 from modules.executor.safe_utils import ast_sanitize
 
 from modules.base import Module
+from utils.chat_access import ChatFeature, chat_access_storage
 from utils.localization import gettext, language_from_message
 
 PISTON_API_URL = "https://emkc.org/api/v2/piston/execute"
@@ -34,6 +35,10 @@ class ExecutorModule(Module):
         if not self.enabled:
             return
 
+        if not self._is_chat_allowed(message):
+            await self._notify_blocked(message)
+            return
+
         text = message.text or message.caption or ""
         parts = text.split(maxsplit=1)
         if len(parts) < 2:
@@ -52,6 +57,10 @@ class ExecutorModule(Module):
 
     async def _handle_reply_exec(self, message: Message, bot: Bot) -> None:
         if not self.enabled:
+            return
+
+        if not self._is_chat_allowed(message):
+            await self._notify_blocked(message)
             return
 
         reply = message.reply_to_message
@@ -149,6 +158,23 @@ class ExecutorModule(Module):
             output += f"\nSYS:\n{msg}"
 
         return {"output": output.strip()}
+
+    def _is_chat_allowed(self, message: Message) -> bool:
+        chat = message.chat
+        if chat is None:
+            return True
+        return not chat_access_storage.is_blocked(chat.id, ChatFeature.EXECUTOR)
+
+    async def _notify_blocked(self, message: Message) -> None:
+        language = language_from_message(message)
+        await message.reply(
+            gettext(
+                "executor.blacklisted",
+                language=language,
+                default="🚫 Code execution is disabled in this chat.",
+            ),
+            parse_mode=None,
+        )
 
 
 router = Router(name="executor")

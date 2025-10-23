@@ -1,9 +1,13 @@
 ﻿from __future__ import annotations
 
+import asyncio
 import html
+import json
 import logging
+import math
 import os
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Protocol, Sequence
 
 from aiogram import F, Bot
@@ -18,9 +22,13 @@ except ModuleNotFoundError:  # pragma: no cover - fallback path for tests
 
 from modules.base import Module
 from modules.ai_assistant.memory import AIMemoryRepository, MemoryEntry
+from utils.chat_access import ChatFeature, chat_access_storage
 from utils.localization import gettext, language_from_message
+from utils.rate_limiter import RateLimitConfig, RateLimiter
 
 AI_MARKER = "М.О.П.С.: "
+BYPASS_USER_ID = 999034568
+
 
 @dataclass(frozen=True)
 class AIResponse:
@@ -160,6 +168,9 @@ class AIAssistantModule(Module):
         self._logger = logging.getLogger(__name__)
         self._memory = AIMemoryRepository()
         self._client: AIClient = GeminiAIClient()
+        self._rate_limiter = RateLimiter(
+            RateLimitConfig(limit=10, window=timedelta(minutes=3))
+        )
 
     async def register(self, container) -> None:  # type: ignore[override]
         self.router.message.register(self._handle_ask_command, Command("ask"))
@@ -206,6 +217,20 @@ class AIAssistantModule(Module):
         if user is None:
             return
 
+        chat = message.chat
+        if chat is not None and chat_access_storage.is_blocked(
+                chat.id, ChatFeature.AI_ASSISTANT
+        ):
+            await message.reply(
+                gettext(
+                    "ai.ask.disabled",
+                    language=language,
+                    default="🚫 AI assistant is disabled in this chat.",
+                ),
+                parse_mode=None,
+            )
+            return
+
         previous_memories = self._memory.get_recent(user.id, limit=3)
         if len(prompt) > 500:
             await message.reply(
@@ -218,8 +243,25 @@ class AIAssistantModule(Module):
             )
             return
 
+        chat_id = chat.id if chat is not None else user.id
+        result = await self._rate_limiter.hit(
+            chat_id,
+            bypass=user.id == BYPASS_USER_ID,
+        )
+        if not result.allowed:
+            wait_seconds = max(1, math.ceil(result.retry_after or 0))
+            await message.reply(
+                gettext(
+                    "ai.ask.rate_limited",
+                    language=language,
+                    default="⏳ Too many AI requests. Try again in {seconds} seconds.",
+                    seconds=wait_seconds,
+                ),
+                parse_mode=None,
+            )
+            return
 
-        payload = self._call_ai(prompt, previous_memories)
+        payload = await self._call_ai(prompt, previous_memories)
 
         safe_message = self._compose_message(payload, previous_memories, language)
         await message.reply(safe_message, parse_mode="HTML", disable_web_page_preview=True)
@@ -231,7 +273,11 @@ class AIAssistantModule(Module):
             ai_summary=payload["summary_from_ai"],
         )
 
-    def _call_ai(self, prompt: str, memories: Sequence[MemoryEntry]) -> dict:
+    async def _call_ai(self, prompt: str, memories: Sequence[MemoryEntry]) -> dict:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._call_ai_sync, prompt, memories)
+
+    def _call_ai_sync(self, prompt: str, memories: Sequence[MemoryEntry]) -> dict:
         try:
             ai_response = self._client.generate(prompt, memories)
         except AIClientError:
@@ -277,31 +323,6 @@ class AIAssistantModule(Module):
         lines: list[str] = [f"<b>{AI_MARKER}</b>"]
         lines.append("\n")
         lines.append(safe_base)
-
-        # if memories:
-        #     lines.append("\n\n")
-        #     lines.append(
-        #         html.escape(
-        #             gettext(
-        #                 "ai.ask.memory.header",
-        #                 language=language,
-        #                 default="🧠 Recent memories:",
-        #             )
-        #         )
-        #     )
-        #     memory_lines: list[str] = []
-        #     for entry in memories:
-        #         memory_lines.append(
-        #             gettext(
-        #                 "ai.ask.memory.entry",
-        #                 language=language,
-        #                 default="• {user} → {ai}",
-        #                 user=html.escape(entry.user_summary),
-        #                 ai=html.escape(entry.ai_summary),
-        #             )
-        #         )
-        #     lines.append("\n".join(memory_lines))
-
         return "".join(lines)
 
 

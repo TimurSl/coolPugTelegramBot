@@ -299,5 +299,20 @@
   "executor.usage": "Usage: /exec <python code>",
   "executor.forbidden": "🚫 Disallowed operation detected.",
   "executor.no_output": "(no output)",
-  "ai.ask.prompt_too_long": "⚠️ Your prompt is too long. Please limit it to 500 characters."
+  "ai.ask.prompt_too_long": "⚠️ Your prompt is too long. Please limit it to 500 characters.",
+  "ai.ask.prompt_too_long": "⚠️ Your prompt is too long. Please limit it to 500 characters.",
+  "ai.ask.disabled": "🚫 AI assistant is disabled in this chat.",
+  "ai.ask.rate_limited": "⏳ Too many AI requests. Try again in {seconds} seconds.",
+  "executor.blacklisted": "🚫 Code execution is disabled in this chat.",
+  "blacklist.not_authorized": "❌ Only chat administrators can change blacklist settings.",
+  "blacklist.usage": "Usage: /blacklist <assistant|executor> <on|off>. {summary}",
+  "blacklist.unknown_feature": "❌ Unknown feature '{feature}'. Use assistant or executor.",
+  "blacklist.invalid_action": "Specify 'on' or 'off'. {summary}",
+  "blacklist.status.blocked": "blocked",
+  "blacklist.status.allowed": "allowed",
+  "blacklist.feature.assistant": "AI assistant",
+  "blacklist.feature.executor": "Code executor",
+  "blacklist.updated": "✅ {feature} is now {status} in this chat.",
+  "blacklist.summary.none": "All features allowed.",
+  "blacklist.summary.blocked": "Blocked: {features}."
 }
