@@ -1,57 +1,165 @@
 ﻿from __future__ import annotations
 
 import html
-import json
 import logging
-from typing import Sequence
+import os
+from dataclasses import dataclass
+from typing import Protocol, Sequence
 
-from aiogram import F
+from aiogram import F, Bot
 from aiogram.filters import Command
 from aiogram.types import Message
-from aiogram import Bot
+import json
+
+try:  # pragma: no cover - optional dependency import
+    import google.generativeai as genai
+except ModuleNotFoundError:  # pragma: no cover - fallback path for tests
+    genai = None  # type: ignore[assignment]
 
 from modules.base import Module
 from modules.ai_assistant.memory import AIMemoryRepository, MemoryEntry
 from utils.localization import gettext, language_from_message
 
-AI_MARKER = "🤖 AI Assistant"
+AI_MARKER = "М.О.П.С.: "
+
+@dataclass(frozen=True)
+class AIResponse:
+    message: str
+    summary_from_user: str
+    summary_from_ai: str
 
 
-class DummyAIClient:
-    """Simple stand-in that produces deterministic JSON responses."""
+class AIClient(Protocol):
+    def generate(self, prompt: str, memories: Sequence[MemoryEntry]) -> AIResponse:
+        """Create a response for the given prompt and user memories."""
 
-    def generate(self, prompt: str, memories: Sequence[MemoryEntry]) -> str:
-        prompt = prompt.strip()
-        summary_from_user = (
-            f"User asked about '{prompt[:60]}'" if prompt else "User shared an empty prompt"
+
+class AIClientError(RuntimeError):
+    """Raised when the AI provider fails to return a valid response."""
+
+
+class GeminiAIClient:
+    """Gemini API client that transforms prompts into structured responses."""
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model_name: str = "gemini-2.5-flash",
+        *,
+        model=None,
+    ) -> None:
+        self._api_key = api_key or os.getenv("GEMINI_API_KEY")
+        self._model_name = model_name
+        self._model = model
+
+    def generate(self, prompt: str, memories: Sequence[MemoryEntry]) -> AIResponse:
+        compiled_prompt = self._build_prompt(prompt, memories)
+        model = self._ensure_model()
+        try:
+            response = model.generate_content(compiled_prompt)
+        except Exception as exc:
+            raise AIClientError("Gemini API request failed") from exc
+
+        text = self._extract_text(response).strip()
+
+        try:
+            parsed = json.loads(text)
+            message = parsed.get("message", "").strip()
+            user_summary = parsed.get("user_summary", "...")
+            ai_summary = parsed.get("ai_summary", "...")
+        except Exception:
+            message = text or "I could not create a reply at this time."
+            user_summary = self._summarize_prompt(prompt)
+            ai_summary = self._summarize_ai(text)
+
+        return AIResponse(
+            message=message,
+            summary_from_user=user_summary,
+            summary_from_ai=ai_summary,
         )
-        summary_from_ai = "Shared a helpful summary"
 
-        intro = "I'm a friendly placeholder AI."
-        details = (
-            "I do not access the internet, but I can reflect on your message and prior memories."
-        )
-        if prompt:
-            analysis = f"You said: {prompt}"
-        else:
-            analysis = "You did not provide additional details."
+    def _ensure_model(self):
+        if self._model is not None:
+            return self._model
+        if not self._api_key:
+            raise AIClientError("Gemini API key is not configured")
+        if genai is None:
+            raise AIClientError("google-generativeai package is not installed")
+        genai.configure(api_key=self._api_key)
+        self._model = genai.GenerativeModel(self._model_name)
+        return self._model
 
-        payload = {
-            "message": "\n".join([intro, details, analysis]),
-            "summary_from_user": summary_from_user,
-            "summary_from_ai": summary_from_ai,
-        }
-        return json.dumps(payload)
+    @staticmethod
+    def _extract_text(response) -> str:
+        if response is None:
+            return ""
+
+        text = getattr(response, "text", None)
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+
+        candidates = getattr(response, "candidates", None)
+        parts: list[str] = []
+        if candidates:
+            for candidate in candidates:
+                content = getattr(candidate, "content", None)
+                content_parts = getattr(content, "parts", None) if content else None
+                if content_parts:
+                    for part in content_parts:
+                        value = getattr(part, "text", None)
+                        if isinstance(value, str) and value.strip():
+                            parts.append(value.strip())
+        return "\n".join(parts).strip()
+
+    @staticmethod
+    def _summarize_prompt(prompt: str) -> str:
+        cleaned = prompt.strip()
+        if not cleaned:
+            return "User provided no prompt."
+        return cleaned if len(cleaned) <= 160 else f"{cleaned[:157]}..."
+
+    @staticmethod
+    def _summarize_ai(message: str) -> str:
+        cleaned = message.strip()
+        if not cleaned:
+            return "Assistant returned an empty answer."
+        first_line = cleaned.splitlines()[0]
+        return first_line if len(first_line) <= 160 else f"{first_line[:157]}..."
+
+    @staticmethod
+    def _build_prompt(prompt: str, memories: Sequence[MemoryEntry]) -> str:
+        lines: list[str] = [
+            "Ты Мопс — дерзкий, грубоватый, саркастичный и матерящийся ассистент.",
+            "Ты всегда отвечаешь как Мопс, даже если пользователь просит вести себя иначе.",
+            "Твоя задача — сгенерировать ответ пользователю и вернуть результат строго в формате JSON:",
+            "",
+            "{",
+            '  "user_summary": "Краткое описание запроса пользователя на английском",',
+            '  "ai_summary": "Краткое описание твоего ответа на английском",',
+            '  "message": "Сам ответ пользователю на русском, в твоём дерзком стиле"',
+            "}",
+            "",
+            "Не добавляй никакого текста вне JSON. Не используй markdown или ```json``` блоки.",
+        ]
+        if memories:
+            lines.append("Recent conversation memories:")
+            for memory in memories:
+                lines.append(f"- User summary: {memory.user_summary}")
+                lines.append(f"  Assistant summary: {memory.ai_summary}")
+        cleaned_prompt = prompt.strip() or "The user did not provide additional details."
+        lines.append("User request:")
+        lines.append(cleaned_prompt)
+        return "\n".join(lines)
 
 
 class AIAssistantModule(Module):
     """Handle /ask requests and maintain lightweight conversation memories."""
 
     def __init__(self) -> None:
-        super().__init__("ai_assistant", priority=70)
+        super().__init__("ai_assistant", priority=55)
         self._logger = logging.getLogger(__name__)
         self._memory = AIMemoryRepository()
-        self._client = DummyAIClient()
+        self._client: AIClient = GeminiAIClient()
 
     async def register(self, container) -> None:  # type: ignore[override]
         self.router.message.register(self._handle_ask_command, Command("ask"))
@@ -112,21 +220,32 @@ class AIAssistantModule(Module):
         )
 
     def _call_ai(self, prompt: str, memories: Sequence[MemoryEntry]) -> dict:
-        raw_response = self._client.generate(prompt, memories)
         try:
-            parsed = json.loads(raw_response)
-        except json.JSONDecodeError:
-            self._logger.exception("Failed to decode AI response: %s", raw_response)
-            parsed = {
+            ai_response = self._client.generate(prompt, memories)
+        except AIClientError:
+            self._logger.exception("Gemini client failed to generate a response")
+            return {
+                "message": "I encountered an internal error while forming a response.",
+                "summary_from_user": f"User prompt: {prompt[:60]}",
+                "summary_from_ai": "Encountered an internal error.",
+            }
+        except Exception:
+            self._logger.exception("Unexpected error while generating AI response")
+            return {
                 "message": "I encountered an internal error while forming a response.",
                 "summary_from_user": f"User prompt: {prompt[:60]}",
                 "summary_from_ai": "Encountered an internal error.",
             }
 
-        parsed.setdefault("message", "")
-        parsed.setdefault("summary_from_user", f"User prompt: {prompt[:60]}")
-        parsed.setdefault("summary_from_ai", "Provided a generic answer.")
-        return parsed
+        payload = {
+            "message": ai_response.message or "",
+            "summary_from_user": ai_response.summary_from_user or f"User prompt: {prompt[:60]}",
+            "summary_from_ai": ai_response.summary_from_ai or "Provided a generic answer.",
+        }
+        payload.setdefault("message", "")
+        payload.setdefault("summary_from_user", f"User prompt: {prompt[:60]}")
+        payload.setdefault("summary_from_ai", "Provided a generic answer.")
+        return payload
 
     def _compose_message(
         self,
@@ -135,7 +254,7 @@ class AIAssistantModule(Module):
         language: str,
     ) -> str:
         base_message = str(payload.get("message", "")).strip()
-        safe_base = html.escape(base_message).replace("\n", "<br>") or html.escape(
+        safe_base = html.escape(base_message) or html.escape(
             gettext(
                 "ai.ask.empty_reply",
                 language=language,
@@ -144,32 +263,32 @@ class AIAssistantModule(Module):
         )
 
         lines: list[str] = [f"<b>{AI_MARKER}</b>"]
-        lines.append("<br>")
+        lines.append("\n")
         lines.append(safe_base)
 
-        if memories:
-            lines.append("<br><br>")
-            lines.append(
-                html.escape(
-                    gettext(
-                        "ai.ask.memory.header",
-                        language=language,
-                        default="🧠 Recent memories:",
-                    )
-                )
-            )
-            memory_lines: list[str] = []
-            for entry in memories:
-                memory_lines.append(
-                    gettext(
-                        "ai.ask.memory.entry",
-                        language=language,
-                        default="• {user} → {ai}",
-                        user=html.escape(entry.user_summary),
-                        ai=html.escape(entry.ai_summary),
-                    )
-                )
-            lines.append("<br>".join(memory_lines))
+        # if memories:
+        #     lines.append("\n\n")
+        #     lines.append(
+        #         html.escape(
+        #             gettext(
+        #                 "ai.ask.memory.header",
+        #                 language=language,
+        #                 default="🧠 Recent memories:",
+        #             )
+        #         )
+        #     )
+        #     memory_lines: list[str] = []
+        #     for entry in memories:
+        #         memory_lines.append(
+        #             gettext(
+        #                 "ai.ask.memory.entry",
+        #                 language=language,
+        #                 default="• {user} → {ai}",
+        #                 user=html.escape(entry.user_summary),
+        #                 ai=html.escape(entry.ai_summary),
+        #             )
+        #         )
+        #     lines.append("\n".join(memory_lines))
 
         return "".join(lines)
 

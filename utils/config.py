@@ -28,6 +28,7 @@ class BotSettings:
     """Runtime settings loaded from the environment."""
 
     bot_token: str
+    gemini_token: str
     log_level: str = "INFO"
 
 
@@ -62,5 +63,6 @@ def load_settings() -> BotSettings:
     return BotSettings(
         bot_token=os.environ["BOT_TOKEN"],
         log_level=os.getenv("LOG_LEVEL", "INFO"),
+        gemini_token=os.getenv("GEMINI_API_KEY", ""),
     )
 
