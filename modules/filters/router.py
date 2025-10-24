@@ -1014,10 +1014,8 @@ class FiltersModule(Module):
         service = FilterService()
         self._service = service
         self._commands = FilterCommandHandler(service)
-        self._middleware = FilterMiddleware(service)
 
-    async def register(self, _container) -> None:  # type: ignore[override]
-        self.router.message.middleware(self._middleware)
+    async def register(self, _container) -> None: 
         self.router.message.register(
             require_level("filteradd")(self._commands.handle_filter_add),
             Command("filteradd"),
