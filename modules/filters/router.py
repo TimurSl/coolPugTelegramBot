@@ -6,11 +6,10 @@ import re
 import shlex
 from collections import defaultdict
 from functools import wraps
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
-from aiogram import BaseMiddleware
 from aiogram.filters import Command
-from aiogram.types import Message, MessageEntity, TelegramObject
+from aiogram.types import Message, MessageEntity
 from aiogram.utils.text_decorations import html_decoration
 
 from modules.base import Module
@@ -105,6 +104,82 @@ class FilterService:
     @property
     def nickname_storage(self) -> CustomNicknameStorage:
         return self._nickname_storage
+
+    async def handle_trigger_message(self, message: Message) -> None:
+        if message.from_user and message.from_user.is_bot:
+            return
+
+        text = message.text or message.caption
+        if not text:
+            return
+
+        chat = getattr(message, "chat", None)
+        if not chat:
+            return
+
+        definitions = self.storage.list_filter_definitions(chat.id)
+        if not definitions:
+            return
+
+        language = language_from_message(message)
+        text_lower = text.lower()
+        matches: list[tuple[str, str, str]] = []
+        match_arguments: dict[tuple[str, str], str] = {}
+        for trigger_key, pattern, match_type in definitions:
+            if match_type == MATCH_TYPE_REGEX:
+                try:
+                    match_obj = re.search(pattern, text, flags=re.IGNORECASE)
+                except re.error:
+                    logging.exception(
+                        "Invalid regex filter skipped for chat_id=%s pattern='%s'",
+                        chat.id,
+                        pattern,
+                    )
+                    continue
+                if match_obj:
+                    matches.append((trigger_key, pattern, match_type))
+                    match_arguments.setdefault(
+                        (trigger_key, match_type), text[match_obj.end() :].lstrip()
+                    )
+            else:
+                index = text_lower.find(trigger_key)
+                if index != -1:
+                    matches.append((trigger_key, pattern, match_type))
+                    argument_text = text[index + len(trigger_key) :].lstrip()
+                    match_arguments.setdefault((trigger_key, match_type), argument_text)
+
+        if not matches:
+            return
+
+        processed: set[tuple[str, str]] = set()
+        for trigger_key, pattern, match_type in matches:
+            key = (trigger_key, match_type)
+            if key in processed:
+                continue
+            processed.add(key)
+
+            template = self.storage.get_random_template(
+                chat.id, pattern, match_type=match_type
+            )
+            if not template:
+                continue
+
+            entities = self.build_entities(template.parsed_entities())
+            try:
+                await self.send_template_response(
+                    message,
+                    template,
+                    entities,
+                    argument=match_arguments.get((trigger_key, match_type)),
+                    language=language,
+                )
+            except Exception:
+                logging.exception(
+                    "Failed to send filter response for chat_id=%s trigger='%s' template_id=%s",
+                    chat.id,
+                    pattern,
+                    getattr(template, "template_id", None),
+                )
 
     def extract_content(self, src: Message) -> Dict[str, Any]:
         text = src.text or src.caption
@@ -905,140 +980,78 @@ class FilterCommandHandler:
             await message.answer(chunk)
 
 
-class FilterMiddleware(BaseMiddleware):
-    """Middleware that applies saved filters to regular chat messages."""
+class FilterTriggerHandler:
+    """Adapter that routes plain chat messages through the filter service."""
 
     def __init__(self, service: FilterService) -> None:
-        super().__init__()
         self._service = service
 
-    async def __call__(
-        self,
-        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
-        event: TelegramObject,
-        data: Dict[str, Any],
-    ) -> Any:
-        if isinstance(event, Message):
-            try:
-                await self._process_message(event)
-            except Exception:
-                logging.exception(
-                    "Failed to process filter middleware for chat_id=%s",  # pragma: no cover
-                    getattr(getattr(event, "chat", None), "id", None),
-                )
-
-        return await handler(event, data)
-
-    async def _process_message(self, message: Message) -> None:
-        if message.from_user and message.from_user.is_bot:
-            return
-
-        text = message.text or message.caption
-        if not text:
-            return
-
-        chat = getattr(message, "chat", None)
-        if not chat:
-            return
-
-        definitions = self._service.storage.list_filter_definitions(chat.id)
-        if not definitions:
-            return
-
-        language = language_from_message(message)
-        text_lower = text.lower()
-        matches: list[tuple[str, str, str]] = []
-        match_arguments: dict[tuple[str, str], str] = {}
-        for trigger_key, pattern, match_type in definitions:
-            if match_type == MATCH_TYPE_REGEX:
-                try:
-                    match_obj = re.search(pattern, text, flags=re.IGNORECASE)
-                except re.error:
-                    logging.exception(
-                        "Invalid regex filter skipped for chat_id=%s pattern='%s'",
-                        chat.id,
-                        pattern,
-                    )
-                    continue
-                if match_obj:
-                    matches.append((trigger_key, pattern, match_type))
-                    match_arguments.setdefault(
-                        (trigger_key, match_type), text[match_obj.end() :].lstrip()
-                    )
-            else:
-                index = text_lower.find(trigger_key)
-                if index != -1:
-                    matches.append((trigger_key, pattern, match_type))
-                    argument_text = text[index + len(trigger_key) :].lstrip()
-                    match_arguments.setdefault((trigger_key, match_type), argument_text)
-
-        if not matches:
-            return
-
-        processed: set[tuple[str, str]] = set()
-        for trigger_key, pattern, match_type in matches:
-            key = (trigger_key, match_type)
-            if key in processed:
-                continue
-            processed.add(key)
-
-            template = self._service.storage.get_random_template(
-                chat.id, pattern, match_type=match_type
+    async def handle_filter_message(self, message: Message) -> None:
+        try:
+            await self._service.handle_trigger_message(message)
+        except Exception:
+            logging.exception(
+                "Failed to process filter triggers for chat_id=%s",  # pragma: no cover
+                getattr(getattr(message, "chat", None), "id", None),
             )
-            if not template:
-                continue
-
-            entities = self._service.build_entities(template.parsed_entities())
-            try:
-                await self._service.send_template_response(
-                    message,
-                    template,
-                    entities,
-                    argument=match_arguments.get((trigger_key, match_type)),
-                    language=language,
-                )
-            except Exception:
-                logging.exception(
-                    "Failed to send filter response for chat_id=%s trigger='%s' template_id=%s",
-                    chat.id,
-                    pattern,
-                    getattr(template, "template_id", None),
-                )
 
 
 class FiltersModule(Module):
     """Module entry point that wires command handlers and middleware."""
 
+    required_services = ["filter_service"]
+
     def __init__(self) -> None:
         super().__init__("filters", priority=60)
-        service = FilterService()
-        self._service = service
-        self._commands = FilterCommandHandler(service)
+        self._service: Optional[FilterService] = None
+        self._commands: Optional[FilterCommandHandler] = None
+        self._triggers: Optional[FilterTriggerHandler] = None
 
-    async def register(self, _container) -> None: 
+    def _ensure_service(self) -> FilterService:
+        if self._service is None:
+            self._service = getattr(self, "filter_service", None) or FilterService()
+        return self._service
+
+    def _ensure_commands(self) -> FilterCommandHandler:
+        if self._commands is None:
+            self._commands = FilterCommandHandler(self._ensure_service())
+        return self._commands
+
+    def _ensure_trigger_handler(self) -> FilterTriggerHandler:
+        if self._triggers is None:
+            self._triggers = FilterTriggerHandler(self._ensure_service())
+        return self._triggers
+
+    async def register(self, _container) -> None:
+        commands = self._ensure_commands()
         self.router.message.register(
-            require_level("filteradd")(self._commands.handle_filter_add),
+            require_level("filteradd")(commands.handle_filter_add),
             Command("filteradd"),
         )
         self.router.message.register(
-            self._commands.handle_filter_list,
+            commands.handle_filter_list,
             Command("filterlist"),
         )
         self.router.message.register(
-            require_level("filterreplace")(self._commands.handle_filter_replace),
+            require_level("filterreplace")(commands.handle_filter_replace),
             Command("filterreplace"),
         )
         self.router.message.register(
-            require_level("filterremove")(self._commands.handle_filter_remove),
+            require_level("filterremove")(commands.handle_filter_remove),
             Command("filterremove"),
         )
         self.router.message.register(
-            require_level("filterclear")(self._commands.handle_filter_clear),
+            require_level("filterclear")(commands.handle_filter_clear),
             Command("filterclear"),
         )
         self.router.message.register(
-            self._commands.handle_filter_list_all,
+            commands.handle_filter_list_all,
             Command("filterlistall"),
+        )
+
+        self.router.message.register(
+            self._ensure_trigger_handler().handle_filter_message,
+            flags={"block": False},
         )
 
 
