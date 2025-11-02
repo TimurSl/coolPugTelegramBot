@@ -15,7 +15,7 @@ from middleware.command_restriction_middleware import CommandRestrictionMiddlewa
 from middleware.collector_middleware import CollectorMiddleware
 from middleware.logging_middleware import setup_middlewares as setup_logging_middleware
 from middleware.roleplay_middleware import RoleplayMiddleware
-from modules.filters.router import FilterMiddleware
+from modules.filters.router import FilterService
 from modules.autodelete.storage import AutoDeleteStorage
 from modules.collector.storage import UserStorage
 
@@ -59,7 +59,9 @@ class ModularBot:
 
         logging.debug("Registering RoleplayMiddleware")
         self.dp.message.middleware(RoleplayMiddleware())
-self.dp.message.middleware(FilterMiddleware())
+
+        self.filter_service = FilterService()
+        self.container.register("filter_service", self.filter_service)
         setup_logging_middleware(self.dp, self.container)
 
     async def start(self) -> None:

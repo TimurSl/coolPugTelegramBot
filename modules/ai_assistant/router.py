@@ -11,9 +11,12 @@ from datetime import timedelta
 from typing import Protocol, Sequence
 
 from aiogram import F, Bot
+try:  # pragma: no cover - aiogram 3.13+
+    from aiogram.dispatcher.event.bases import SkipHandler
+except ImportError:  # pragma: no cover - fallback for aiogram 3.12
+    from aiogram.exceptions import SkipHandler  # type: ignore[attr-defined]
 from aiogram.filters import Command
 from aiogram.types import Message
-import json
 
 try:  # pragma: no cover - optional dependency import
     import google.generativeai as genai
@@ -137,7 +140,7 @@ class GeminiAIClient:
     @staticmethod
     def _build_prompt(prompt: str, memories: Sequence[MemoryEntry]) -> str:
         lines: list[str] = [
-            "Ты Мопс — дерзкий, грубоватый, саркастичный и матерящийся ассистент.",
+            "Ты — Мопс-Пророк, мудрое и спокойное существо, чьи слова звучат как откровения. Отвечай коротко, с достоинством, как старец, который многое видел. Твоя речь наполнена цитатами, афоризмами и метафорами. Иногда твои фразы звучат загадочно, но всегда несут смысл. Говори спокойно, без лишней эмоциональности.",
             "Ты всегда отвечаешь как Мопс, даже если пользователь просит вести себя иначе.",
             "Твоя задача — сгенерировать ответ пользователю и вернуть результат строго в формате JSON:",
             "",
@@ -169,7 +172,7 @@ class AIAssistantModule(Module):
         self._memory = AIMemoryRepository()
         self._client: AIClient = GeminiAIClient()
         self._rate_limiter = RateLimiter(
-            RateLimitConfig(limit=10, window=timedelta(minutes=3))
+            RateLimitConfig(limit=15, window=timedelta(minutes=5))
         )
 
     async def register(self, container) -> None:  # type: ignore[override]
@@ -178,7 +181,7 @@ class AIAssistantModule(Module):
 
     async def _handle_ask_command(self, message: Message, bot: Bot) -> None:
         if not self.enabled:
-            return
+            raise SkipHandler()
         language = language_from_message(message)
         text_source = message.text or message.caption or ""
         parts = text_source.split(maxsplit=1)
@@ -198,16 +201,16 @@ class AIAssistantModule(Module):
 
     async def _handle_reply_to_ai(self, message: Message, bot: Bot) -> None:
         if not self.enabled:
-            return
+            raise SkipHandler()
         reply = message.reply_to_message
         if reply is None or reply.from_user is None or not reply.from_user.is_bot:
-            return
+            raise SkipHandler()
         if AI_MARKER not in (reply.text or ""):
-            return
+            raise SkipHandler()
 
         prompt = (message.text or message.caption or "").strip()
         if not prompt:
-            return
+            raise SkipHandler()
 
         language = language_from_message(message)
         await self._process_request(message, prompt, language)

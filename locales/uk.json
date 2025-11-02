@@ -305,5 +305,10 @@
   "blacklist.feature.executor": "Виконавець коду",
   "blacklist.updated": "✅ {feature} тепер {status} у цьому чаті.",
   "blacklist.summary.none": "Усі функції дозволені.",
-  "blacklist.summary.blocked": "Заблоковано: {features}."
+  "blacklist.summary.blocked": "Заблоковано: {features}.",
+  "documentation.sections.settings.button": "Settings",
+  "documentation.sections.filters.content.7": "Tags <code>{argument}</code> and <code>{argumentNoQuestion}</code> insert text after the trigger (with or without question marks).",
+  "documentation.sections.moderation.content.10": "<b>/award</b> — give a user a custom award.",
+  "documentation.sections.moderation.content.11": "<b>/delreward</b> — remove a previously issued award.",
+  "documentation.sections.moderation.content.12": "<b>/mods</b> — show every moderator grouped by level (add <code>mention=off</code> to hide profile links)."
 }
