@@ -17,6 +17,7 @@ from modules.moderation.command_restrictions import (
 )
 from modules.moderation.data import ModerationDatabase
 from modules.moderation.level_storage import moderation_levels
+from modules.roleplay.call_service import CallCommandService
 from modules.roleplay.nickname_storage import CustomNicknameStorage
 from utils.localization import gettext, language_from_message
 from utils.path_utils import get_home_dir
@@ -25,6 +26,19 @@ router = Router(name="rp_config")
 priority = 50
 
 CONFIG_FILE = os.path.join(get_home_dir(), "rp_config.json")
+
+CALL_EMOJIS: tuple[str, ...] = (
+    "🎈",
+    "🎋",
+    "🎇",
+    "🎎",
+    "🎟",
+    "🎉",
+    "🎊",
+    "🎏",
+    "🎐",
+    "🎑",
+)
 
 
 class RPConfig:
@@ -129,6 +143,7 @@ class RPConfig:
 
 rp_config = RPConfig()
 nickname_storage = CustomNicknameStorage()
+call_service = CallCommandService(emojis=CALL_EMOJIS)
 
 
 def _required_level(
@@ -643,6 +658,55 @@ async def handle_list_rp(message: Message):
         )
 
     await message.answer("\n".join(lines))
+
+
+@router.message(Command("call"))
+async def handle_call(message: Message):
+    language = language_from_message(message)
+    if not message.from_user:
+        return
+
+    caller = message.from_user
+    fallback_name = caller.full_name or caller.username or str(caller.id)
+    caller_label = _get_display_name(message.chat.id, caller.id, fallback_name)
+
+    stored_user_ids = UserCollector.get_chat_user_ids(message.chat.id)
+    target_user_ids = [user_id for user_id in stored_user_ids if user_id != caller.id]
+
+    if not target_user_ids:
+        await message.answer(
+            gettext(
+                "roleplay.call.no_members",
+                language=language,
+                default="❌ I don't know anyone to call yet.",
+            )
+        )
+        return
+
+    template = gettext(
+        "roleplay.call.template",
+        language=language,
+        default="{caller} is calling everyone! {mentions}",
+    )
+
+    messages = call_service.build_call_messages(caller_label, template, target_user_ids)
+
+    if not messages:
+        await message.answer(
+            gettext(
+                "roleplay.call.no_members",
+                language=language,
+                default="❌ I don't know anyone to call yet.",
+            )
+        )
+        return
+
+    for text in messages:
+        await message.answer(
+            text,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
 
 
 async def _send_profile_response(message: Message, language: str, arg_text: str) -> None:

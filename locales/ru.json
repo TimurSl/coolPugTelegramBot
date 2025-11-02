@@ -5,6 +5,8 @@
   "roleplay.add.success": "✅ RP command '{keyword}' added (media {media_status}).",
   "roleplay.list.header": "📜 RP commands for this chat:",
   "roleplay.list.item": "{emoji} {keyword} → {action} {media_flag}{random_flag}",
+  "roleplay.call.no_members": "❌ Мне пока некого позвать.",
+  "roleplay.call.template": "{caller} зовёт всех! {mentions}",
   "roleplay.delete.success": "🗑 RP command '{keyword}' removed.",
   "ai.ask.usage": "Usage: /ask <your question>",
   "documentation.sections.overview.title": "ℹ️ Main commands",

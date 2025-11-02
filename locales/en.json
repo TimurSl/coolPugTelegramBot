@@ -103,6 +103,8 @@
   "roleplay.profile.awards.none": "• Awards: none",
   "roleplay.list.header": "📜 RP commands for this chat:",
   "roleplay.list.item": "{emoji} {keyword} → {action} {media_flag}{random_flag}",
+  "roleplay.call.no_members": "❌ I don't know anyone to call yet.",
+  "roleplay.call.template": "{caller} is calling everyone! {mentions}",
   "entertainment.quran.meme": "READ THE QURAN\nPRAISE THE LAMB\nEMBRACE ISLAM\nBREATHE FOR ISLAM\nONE LAW\nALLAH IS ONE\nWHO WE LOVE\nWE WILL DEFEND\nSHEEP GO BA-BA\nMETRO BA-BAH",
   "filters.permission_denied": "❌ Only level {level}+ members can manage filters.",
   "filters.preview.no_text": "No text",

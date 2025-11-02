@@ -525,3 +525,25 @@ class UserStorage:
             return row[0]
         return None
 
+    def get_chat_user_ids(self, chat_id: int) -> List[int]:
+        with self._lock:
+            with self._get_connection() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT user_id FROM chat_users
+                    WHERE chat_id = ?
+                    ORDER BY user_id ASC
+                    """,
+                    (chat_id,),
+                ).fetchall()
+
+        unique_ids: List[int] = []
+        seen: set[int] = set()
+        for (user_id,) in rows:
+            if not isinstance(user_id, int) or user_id in seen:
+                continue
+            seen.add(user_id)
+            unique_ids.append(user_id)
+
+        return unique_ids
+
