@@ -195,7 +195,7 @@
   "moderation.command_restrict.set": "✅ Command {command} now requires level {level}.",
   "moderation.command_restrict.denied": "❌ Only level {level}+ members can use {command}.",
   "settings.language.permission_denied": "❌ Only level {level}+ members can change the chat language.",
-  "settings.language.usage": "Usage: /language <{languages}> (send /language default to reset). Current: {current}.",
+  "settings.language.usage": "Usage: /language [{languages}] (send /language default to reset). Current: {current}.",
   "settings.language.unsupported": "❌ Unsupported language '{code}'. Available: {languages}.",
   "settings.language.set": "✅ Chat language set to {code}.",
   "settings.language.reset": "✅ Chat language reset to default ({code}).",

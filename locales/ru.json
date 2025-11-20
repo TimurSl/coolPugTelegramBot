@@ -140,5 +140,18 @@
   "moderation.award.usage": "Usage: /award <text> (reply to a user's message).",
   "filters.list.usage": "Usage: /filterlist [--regex] word",
   "filters.clear.usage": "Usage: /filterclear [--regex] word",
-  "moderation.mute.usage": "❌ Invalid usage! Examples:\n/mute @user 1h spam\n/mute 30m @user\n/mute @user - Permanent mute"
+  "moderation.mute.usage": "❌ Invalid usage! Examples:\n/mute @user 1h spam\n/mute 30m @user\n/mute @user - Permanent mute",
+  "moderation.command_restrict.set": "✅ Command {command} now requires level {level}.",
+  "settings.language.usage": "Usage: /language [{languages}] (send /language default to reset). Current: {current}.",
+  "moderation.menu.exit_confirmation": "🏠 You're back in the main menu. Use /help to see available commands.",
+  "filters.list.empty": "ℹ️ No templates found for this word.",
+  "moderation.command_restrict.level_range": "❌ Level must be a number between 0 and 5.",
+  "moderation.command_restrict.usage": "Usage: /restrictcommand <level 0-5> <command> (use level 0 to remove)",
+  "moderation.command_restrict.permission_denied": "❌ Only level {level}+ members can configure command restrictions.",
+  "moderation.error.target_admin_funny": "Hey buddy, I'm not scared—watch your words.",
+  "filters.error.reply_required": "❌ The command must reply to a message containing the template.",
+  "roleplay.profile.joined.unknown": "unknown",
+  "roleplay.profile.duration.unknown": "unknown",
+  "moderation.duration.seconds": "{count} seconds",
+  "moderation.warn.usage": "❌ Please specify a user to warn or reply to their message."
 }
