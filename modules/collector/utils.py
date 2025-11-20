@@ -91,3 +91,8 @@ class UserCollector:
         )
         return UserCollector.storage.get_display_name(chat_id, user_id)
 
+    @staticmethod
+    def get_chat_user_ids(chat_id: int) -> List[int]:
+        logging.debug("Fetching chat user ids for chat_id=%s", chat_id)
+        return UserCollector.storage.get_chat_user_ids(chat_id)
+

@@ -5,11 +5,12 @@ import logging
 import re
 import shlex
 from collections import defaultdict
+from dataclasses import dataclass
 from functools import wraps
 from typing import Any, Dict, Optional, Tuple
 
 from aiogram.filters import Command
-from aiogram.types import Message, MessageEntity
+from aiogram.types import Message, MessageEntity, User
 from aiogram.utils.text_decorations import html_decoration
 
 from modules.base import Module
@@ -86,8 +87,16 @@ class FilterService:
     """Service layer that provides filter rendering and storage helpers."""
 
     PLACEHOLDER_PATTERN = re.compile(
-        r"{(randomUser|randomMention|randomRpUser|argument|argumentNoQuestion)}"
+        r"{(randomUser|randomMention|randomRpUser|argument|argumentNoQuestion|callerNickname|callerRpNickname|callerMention)}"
     )
+
+    HTML_ONLY_PLACEHOLDERS = {
+        "randomMention",
+        "randomRpUser",
+        "callerNickname",
+        "callerRpNickname",
+        "callerMention",
+    }
 
     def __init__(
         self,
@@ -172,6 +181,7 @@ class FilterService:
                     entities,
                     argument=match_arguments.get((trigger_key, match_type)),
                     language=language,
+                    delete_trigger=template.delete_original,
                 )
             except Exception:
                 logging.exception(
@@ -335,6 +345,51 @@ class FilterService:
             return self._format_html_link(display_label, user_id)
         return display_label
 
+    def _resolve_caller_placeholder(
+        self,
+        placeholder: str,
+        *,
+        chat_id: Optional[int],
+        caller: Optional[User],
+        fallback: str,
+        use_html: bool,
+    ) -> str:
+        if not caller:
+            return fallback
+
+        username = caller.username or ""
+        mention_label = caller.full_name
+        mention_username = f"@{username}" if username else ""
+        prefer_rp = placeholder == "callerRpNickname"
+        mention_source = mention_label if placeholder == "callerMention" else mention_username
+
+        display_label = self._build_roleplay_placeholder_label(
+            chat_id,
+            caller.id,
+            prefer_rp=prefer_rp,
+            mention_label=mention_source,
+            username_label=username or "",
+            display_name=caller.full_name,
+            fallback=fallback,
+            use_html=use_html,
+        )
+
+        if placeholder in {"callerNickname", "callerRpNickname"} and not mention_source:
+            display_label = self._build_roleplay_placeholder_label(
+                chat_id,
+                caller.id,
+                prefer_rp=prefer_rp,
+                mention_label=mention_label,
+                username_label=username or "",
+                display_name=caller.full_name,
+                fallback=fallback,
+                use_html=use_html,
+            )
+
+        if use_html:
+            return self._format_html_link(display_label, caller.id)
+        return display_label
+
     async def apply_dynamic_placeholders(
         self,
         text: Optional[str],
@@ -342,6 +397,7 @@ class FilterService:
         *,
         chat_id: Optional[int],
         argument: Optional[str],
+        caller: Optional[User],
         language: str,
     ) -> tuple[Optional[str], Optional[list[MessageEntity]], Optional[str]]:
         if not text:
@@ -352,7 +408,7 @@ class FilterService:
             return text, entities, None
 
         requires_html = bool(entities) or any(
-            match.group(1) in {"randomMention", "randomRpUser"} for match in matches
+            match.group(1) in self.HTML_ONLY_PLACEHOLDERS for match in matches
         )
 
         if entities:
@@ -391,6 +447,18 @@ class FilterService:
                 replacement = self._resolve_placeholder_value(
                     placeholder_type,
                     chat_id=chat_id,
+                    fallback=fallback,
+                    use_html=requires_html,
+                )
+            elif placeholder_type in {
+                "callerNickname",
+                "callerRpNickname",
+                "callerMention",
+            }:
+                replacement = self._resolve_caller_placeholder(
+                    placeholder_type,
+                    chat_id=chat_id,
+                    caller=caller,
                     fallback=fallback,
                     use_html=requires_html,
                 )
@@ -448,12 +516,14 @@ class FilterService:
         *,
         argument: Optional[str],
         language: str,
+        delete_trigger: bool = False,
     ) -> None:
         rendered_text, rendered_entities, parse_mode = await self.apply_dynamic_placeholders(
             template.text,
             entities,
             chat_id=getattr(message.chat, "id", None),
             argument=argument,
+            caller=message.from_user,
             language=language,
         )
 
@@ -523,9 +593,22 @@ class FilterService:
                 entities=None if parse_mode else rendered_entities,
             )
 
+        if delete_trigger:
+            try:
+                await message.delete()
+            except Exception:
+                logging.debug(
+                    "Failed to delete trigger message for chat_id=%s", getattr(message.chat, "id", None)
+                )
+
 
 class FilterCommandHandler:
     """Encapsulates command handlers that manage filter templates."""
+
+    @dataclass
+    class FilterCommandOptions:
+        match_type: str = MATCH_TYPE_CONTAINS
+        delete_original: bool = False
 
     def __init__(self, service: FilterService) -> None:
         self._service = service
@@ -542,20 +625,34 @@ class FilterCommandHandler:
         except ValueError:
             return text.split()
 
-    @staticmethod
+    @classmethod
+    def _parse_command_options(
+        cls, args: list[str], *, start_index: int = 1
+    ) -> tuple["FilterCommandHandler.FilterCommandOptions", int]:
+        options = cls.FilterCommandOptions()
+        index = start_index
+        while index < len(args):
+            option = args[index].lower()
+            if option in ("--regex", "-r"):
+                options.match_type = MATCH_TYPE_REGEX
+            elif option in ("--delete", "-d"):
+                options.delete_original = True
+            else:
+                break
+            index += 1
+        return options, index
+
+    @classmethod
     def _extract_trigger_argument(
+        cls,
         args: list[str],
         *,
         start_index: int = 1,
         join_rest: bool = True,
-    ) -> tuple[Optional[str], str, int]:
-        match_type = MATCH_TYPE_CONTAINS
-        index = start_index
-        if index < len(args) and args[index].lower() in ("--regex", "-r"):
-            match_type = MATCH_TYPE_REGEX
-            index += 1
+    ) -> tuple[Optional[str], "FilterCommandHandler.FilterCommandOptions", int]:
+        options, index = cls._parse_command_options(args, start_index=start_index)
         if index >= len(args):
-            return None, match_type, index
+            return None, options, index
         if join_rest:
             trigger = " ".join(args[index:]).strip()
             index = len(args)
@@ -563,8 +660,8 @@ class FilterCommandHandler:
             trigger = args[index].strip()
             index += 1
         if not trigger:
-            return None, match_type, index
-        return trigger, match_type, index
+            return None, options, index
+        return trigger, options, index
 
     @staticmethod
     def _format_trigger_label(pattern: str, match_type: str, *, language: str) -> str:
@@ -593,15 +690,15 @@ class FilterCommandHandler:
     async def handle_filter_add(self, message: Message) -> None:
         language = language_from_message(message)
         args = self._split_command_args(message)
-        trigger, match_type, _ = self._extract_trigger_argument(args)
+        trigger, options, _ = self._extract_trigger_argument(args)
         if not trigger:
-            await message.answer(
-                gettext(
-                    "filters.add.usage",
-                    language=language,
-                    default="Usage: /filteradd [--regex] word (command must reply to a message)",
+                await message.answer(
+                    gettext(
+                        "filters.add.usage",
+                        language=language,
+                        default="Usage: /filteradd [--regex] [-d] word (command must reply to a message)",
+                    )
                 )
-            )
             return
 
         if not message.reply_to_message:
@@ -614,7 +711,7 @@ class FilterCommandHandler:
             )
             return
 
-        if match_type == MATCH_TYPE_REGEX:
+        if options.match_type == MATCH_TYPE_REGEX:
             error = self._validate_regex(trigger)
             if error:
                 await message.answer(
@@ -645,7 +742,8 @@ class FilterCommandHandler:
             entities=content["entities"],
             media_type=content["media_type"],
             file_id=content["file_id"],
-            match_type=match_type,
+            match_type=options.match_type,
+            delete_original=options.delete_original,
         )
         await message.answer(
             gettext(
@@ -653,14 +751,16 @@ class FilterCommandHandler:
                 language=language,
                 default="✅ Template #{template_id} for {trigger_label} saved.",
                 template_id=template_id,
-                trigger_label=self._format_trigger_label(trigger, match_type, language=language),
+                trigger_label=self._format_trigger_label(
+                    trigger, options.match_type, language=language
+                ),
             )
         )
 
     async def handle_filter_list(self, message: Message) -> None:
         language = language_from_message(message)
         args = self._split_command_args(message)
-        trigger, match_type, _ = self._extract_trigger_argument(args)
+        trigger, options, _ = self._extract_trigger_argument(args)
         if not trigger:
             await message.answer(
                 gettext(
@@ -671,7 +771,7 @@ class FilterCommandHandler:
             )
             return
 
-        if match_type == MATCH_TYPE_REGEX:
+        if options.match_type == MATCH_TYPE_REGEX:
             error = self._validate_regex(trigger)
             if error:
                 await message.answer(
@@ -681,10 +781,12 @@ class FilterCommandHandler:
                         default="❌ Invalid regular expression: {error}",
                         error=error,
                     )
-                )
-                return
+            )
+            return
 
-        templates = self.storage.list_templates(message.chat.id, trigger, match_type=match_type)
+        templates = self.storage.list_templates(
+            message.chat.id, trigger, match_type=options.match_type
+        )
         if not templates:
             await message.answer(
                 gettext(
@@ -725,15 +827,15 @@ class FilterCommandHandler:
     async def handle_filter_replace(self, message: Message) -> None:
         language = language_from_message(message)
         args = self._split_command_args(message)
-        trigger, match_type, index = self._extract_trigger_argument(args, join_rest=False)
+        trigger, options, index = self._extract_trigger_argument(args, join_rest=False)
         if not trigger or index >= len(args):
-            await message.answer(
-                gettext(
-                    "filters.replace.usage",
-                    language=language,
-                    default="Usage: /filterreplace [--regex] word id (command must reply to a message)",
+                await message.answer(
+                    gettext(
+                        "filters.replace.usage",
+                        language=language,
+                        default="Usage: /filterreplace [--regex] [-d] word id (command must reply to a message)",
+                    )
                 )
-            )
             return
 
         if not message.reply_to_message:
@@ -746,7 +848,7 @@ class FilterCommandHandler:
             )
             return
 
-        if match_type == MATCH_TYPE_REGEX:
+        if options.match_type == MATCH_TYPE_REGEX:
             error = self._validate_regex(trigger)
             if error:
                 await message.answer(
@@ -790,7 +892,8 @@ class FilterCommandHandler:
             entities=content["entities"],
             media_type=content["media_type"],
             file_id=content["file_id"],
-            match_type=match_type,
+            match_type=options.match_type,
+            delete_original=options.delete_original,
         )
         if updated:
             await message.answer(
@@ -800,7 +903,7 @@ class FilterCommandHandler:
                     default="♻️ Template #{template_id} for {trigger_label} updated.",
                     template_id=template_id,
                     trigger_label=self._format_trigger_label(
-                        trigger, match_type, language=language
+                        trigger, options.match_type, language=language
                     ),
                 )
             )
@@ -816,7 +919,7 @@ class FilterCommandHandler:
     async def handle_filter_remove(self, message: Message) -> None:
         language = language_from_message(message)
         args = self._split_command_args(message)
-        trigger, match_type, index = self._extract_trigger_argument(args, join_rest=False)
+        trigger, options, index = self._extract_trigger_argument(args, join_rest=False)
         if not trigger or index >= len(args):
             await message.answer(
                 gettext(
@@ -827,7 +930,7 @@ class FilterCommandHandler:
             )
             return
 
-        if match_type == MATCH_TYPE_REGEX:
+        if options.match_type == MATCH_TYPE_REGEX:
             error = self._validate_regex(trigger)
             if error:
                 await message.answer(
@@ -853,7 +956,7 @@ class FilterCommandHandler:
             return
 
         removed = self.storage.remove_template(
-            message.chat.id, trigger, template_id, match_type=match_type
+            message.chat.id, trigger, template_id, match_type=options.match_type
         )
         if removed:
             await message.answer(
@@ -863,7 +966,7 @@ class FilterCommandHandler:
                     default="🗑 Template #{template_id} for {trigger_label} deleted. Indexes recalculated.",
                     template_id=template_id,
                     trigger_label=self._format_trigger_label(
-                        trigger, match_type, language=language
+                        trigger, options.match_type, language=language
                     ),
                 )
             )
@@ -879,7 +982,7 @@ class FilterCommandHandler:
     async def handle_filter_clear(self, message: Message) -> None:
         language = language_from_message(message)
         args = self._split_command_args(message)
-        trigger, match_type, _ = self._extract_trigger_argument(args)
+        trigger, options, _ = self._extract_trigger_argument(args)
         if not trigger:
             await message.answer(
                 gettext(
@@ -890,7 +993,7 @@ class FilterCommandHandler:
             )
             return
 
-        if match_type == MATCH_TYPE_REGEX:
+        if options.match_type == MATCH_TYPE_REGEX:
             error = self._validate_regex(trigger)
             if error:
                 await message.answer(
@@ -903,14 +1006,16 @@ class FilterCommandHandler:
                 )
                 return
 
-        if self.storage.clear_trigger(message.chat.id, trigger, match_type=match_type):
+        if self.storage.clear_trigger(
+            message.chat.id, trigger, match_type=options.match_type
+        ):
             await message.answer(
                 gettext(
                     "filters.clear.success",
                     language=language,
                     default="🧹 All templates for {trigger_label} have been deleted.",
                     trigger_label=self._format_trigger_label(
-                        trigger, match_type, language=language
+                        trigger, options.match_type, language=language
                     ),
                 )
             )
