@@ -24,6 +24,7 @@ class FilterTemplate:
     file_id: Optional[str]
     pattern: str
     match_type: str
+    delete_original: bool = False
 
     @property
     def has_media(self) -> bool:
@@ -56,6 +57,7 @@ class FilterStorage:
                     file_id TEXT,
                     pattern TEXT,
                     match_type TEXT NOT NULL DEFAULT 'contains',
+                    delete_original INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY (chat_id, trigger, template_id)
                 )
                 """
@@ -71,6 +73,10 @@ class FilterStorage:
             if "match_type" not in columns:
                 conn.execute(
                     "ALTER TABLE filter_templates ADD COLUMN match_type TEXT NOT NULL DEFAULT 'contains'"
+                )
+            if "delete_original" not in columns:
+                conn.execute(
+                    "ALTER TABLE filter_templates ADD COLUMN delete_original INTEGER NOT NULL DEFAULT 0"
                 )
 
     def _normalise_trigger(self, trigger: str, match_type: str) -> str:
@@ -99,6 +105,7 @@ class FilterStorage:
         media_type: Optional[str],
         file_id: Optional[str],
         match_type: str = MATCH_TYPE_CONTAINS,
+        delete_original: bool = False,
     ) -> int:
         trigger_key = self._normalise_trigger(trigger, match_type)
         pattern = trigger.strip()
@@ -119,9 +126,10 @@ class FilterStorage:
                     media_type,
                     file_id,
                     pattern,
-                    match_type
+                    match_type,
+                    delete_original
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     chat_id,
@@ -133,6 +141,7 @@ class FilterStorage:
                     file_id,
                     pattern,
                     match_type,
+                    1 if delete_original else 0,
                 ),
             )
         return next_id
@@ -148,13 +157,14 @@ class FilterStorage:
         media_type: Optional[str],
         file_id: Optional[str],
         match_type: str = MATCH_TYPE_CONTAINS,
+        delete_original: bool = False,
     ) -> bool:
         trigger_key = self._normalise_trigger(trigger, match_type)
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 """
                 UPDATE filter_templates
-                SET text=?, entities=?, media_type=?, file_id=?
+                SET text=?, entities=?, media_type=?, file_id=?, delete_original=?
                 WHERE chat_id=? AND trigger=? AND match_type=? AND template_id=?
                 """,
                 (
@@ -162,6 +172,7 @@ class FilterStorage:
                     json.dumps(entities) if entities is not None else None,
                     media_type,
                     file_id,
+                    1 if delete_original else 0,
                     chat_id,
                     trigger_key,
                     match_type,
@@ -215,7 +226,7 @@ class FilterStorage:
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
                 """
-                SELECT template_id, text, entities, media_type, file_id, pattern, match_type, trigger
+                SELECT template_id, text, entities, media_type, file_id, pattern, match_type, trigger, delete_original
                 FROM filter_templates
                 WHERE chat_id=? AND trigger=? AND match_type=?
                 ORDER BY template_id
@@ -234,6 +245,7 @@ class FilterStorage:
                 pattern,
                 match_type_value,
                 trigger_value,
+                delete_original,
             ) = row
             templates.append(
                 FilterTemplate(
@@ -246,6 +258,7 @@ class FilterStorage:
                         pattern, trigger_value, match_type_value or match_type
                     ),
                     match_type=(match_type_value or MATCH_TYPE_CONTAINS),
+                    delete_original=bool(delete_original),
                 )
             )
         return templates
@@ -257,7 +270,7 @@ class FilterStorage:
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute(
                 """
-                SELECT template_id, text, entities, media_type, file_id, pattern, match_type, trigger
+                SELECT template_id, text, entities, media_type, file_id, pattern, match_type, trigger, delete_original
                 FROM filter_templates
                 WHERE chat_id=? AND trigger=? AND match_type=?
                 ORDER BY RANDOM()
@@ -275,6 +288,7 @@ class FilterStorage:
             file_id=row[4],
             pattern=self._present_pattern(row[5], row[7], row[6] or match_type),
             match_type=(row[6] or MATCH_TYPE_CONTAINS),
+            delete_original=bool(row[8]),
         )
 
     def has_templates(
@@ -311,7 +325,7 @@ class FilterStorage:
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
                 """
-                SELECT template_id, text, entities, media_type, file_id, pattern, match_type, trigger
+                SELECT template_id, text, entities, media_type, file_id, pattern, match_type, trigger, delete_original
                 FROM filter_templates
                 WHERE chat_id=?
                 ORDER BY match_type, pattern, template_id
@@ -327,4 +341,5 @@ class FilterStorage:
                 file_id=row[4],
                 pattern=self._present_pattern(row[5], row[7], row[6] or MATCH_TYPE_CONTAINS),
                 match_type=(row[6] or MATCH_TYPE_CONTAINS),
+                delete_original=bool(row[8]),
             )
