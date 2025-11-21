@@ -2139,7 +2139,7 @@ class AdvancedModerationModule:
                     )
                 )
 
-                await self.clean_warns(user_id, message.chat.id)
+                #await self.clean_warns(user_id, message.chat.id)
             except TelegramAPIError:
                 pass
 

@@ -153,5 +153,7 @@
   "roleplay.profile.joined.unknown": "unknown",
   "roleplay.profile.duration.unknown": "unknown",
   "moderation.duration.seconds": "{count} seconds",
-  "moderation.warn.usage": "❌ Please specify a user to warn or reply to their message."
+  "moderation.warn.usage": "❌ Please specify a user to warn or reply to their message.",
+  "moderation.duration.hours": "{count} hours",
+  "moderation.warnlist.empty": "✅ This user has no active warnings."
 }

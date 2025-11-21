@@ -692,13 +692,13 @@ class FilterCommandHandler:
         args = self._split_command_args(message)
         trigger, options, _ = self._extract_trigger_argument(args)
         if not trigger:
-                await message.answer(
-                    gettext(
-                        "filters.add.usage",
-                        language=language,
-                        default="Usage: /filteradd [--regex] [-d] word (command must reply to a message)",
-                    )
+            await message.answer(
+                gettext(
+                    "filters.add.usage",
+                    language=language,
+                    default="Usage: /filteradd [--regex] [-d] word (command must reply to a message)",
                 )
+            )
             return
 
         if not message.reply_to_message:
@@ -829,13 +829,13 @@ class FilterCommandHandler:
         args = self._split_command_args(message)
         trigger, options, index = self._extract_trigger_argument(args, join_rest=False)
         if not trigger or index >= len(args):
-                await message.answer(
-                    gettext(
-                        "filters.replace.usage",
-                        language=language,
-                        default="Usage: /filterreplace [--regex] [-d] word id (command must reply to a message)",
-                    )
+            await message.answer(
+                gettext(
+                    "filters.replace.usage",
+                    language=language,
+                    default="Usage: /filterreplace [--regex] [-d] word id (command must reply to a message)",
                 )
+            )
             return
 
         if not message.reply_to_message:
