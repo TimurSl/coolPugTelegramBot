@@ -326,5 +326,10 @@
   "moderation.mods.header": "{stars} Mod Level {level}:",
   "moderation.mutelist.type.mute": "text",
   "moderation.mutelist.type.mediamute": "media",
-  "moderation.warnlist.empty": "✅ This user has no active warnings."
+  "moderation.warnlist.empty": "✅ This user has no active warnings.",
+  "moderation.rank.info_usage": "Usage: /rankinfo <rank_id>",
+  "moderation.rank.edit_usage": "Usage: /modedit <rank_id> <new name>",
+  "moderation.rank.not_found": "❌ Rank with id {id} was not found.",
+  "moderation.rank.add_usage": "Usage: /addmodrank <name> <priority>",
+  "moderation.rank.added": "✅ Rank #{id} created: {name} (level {level}, priority {priority})."
 }

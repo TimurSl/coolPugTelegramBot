@@ -157,5 +157,11 @@
   "moderation.duration.hours": "{count} hours",
   "moderation.warnlist.empty": "✅ This user has no active warnings.",
   "moderation.level.range": "❌ Level must be between 0 and 5.",
-  "moderation.level.invalid": "❌ Level must be a number between 0 and 5."
+  "moderation.level.invalid": "❌ Level must be a number between 0 and 5.",
+  "moderation.rank.info_usage": "Usage: /rankinfo <rank_id>",
+  "moderation.rank.edit_usage": "Usage: /modedit <rank_id> <new name>",
+  "moderation.rank.not_found": "❌ Rank with id {id} was not found.",
+  "moderation.rank.add_usage": "Usage: /addmodrank <name> <priority>",
+  "moderation.rank.added": "✅ Rank #{id} created: {name} (level {level}, priority {priority}).",
+  "moderation.level.insufficient": "❌ You cannot change the level of someone with equal or higher rank."
 }
