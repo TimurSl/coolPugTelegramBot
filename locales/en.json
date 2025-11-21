@@ -325,5 +325,6 @@
   "documentation.sections.moderation.content.12": "<b>/mods</b> — show every moderator grouped by level (add <code>mention=off</code> to hide profile links).",
   "moderation.mods.header": "{stars} Mod Level {level}:",
   "moderation.mutelist.type.mute": "text",
-  "moderation.mutelist.type.mediamute": "media"
+  "moderation.mutelist.type.mediamute": "media",
+  "moderation.warnlist.empty": "✅ This user has no active warnings."
 }
