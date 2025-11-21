@@ -96,3 +96,37 @@ class UserCollector:
         logging.debug("Fetching chat user ids for chat_id=%s", chat_id)
         return UserCollector.storage.get_chat_user_ids(chat_id)
 
+    @staticmethod
+    def get_chat_users(chat_id: int, *, include_archived: bool = False) -> List[Dict]:
+        logging.debug(
+            "Fetching chat users for chat_id=%s include_archived=%s",
+            chat_id,
+            include_archived,
+        )
+        return UserCollector.storage.get_chat_users(
+            chat_id, include_archived=include_archived
+        )
+
+    @staticmethod
+    def set_archived(chat_id: int, user_id: int, archived: bool) -> None:
+        logging.debug(
+            "Setting archived=%s for user_id=%s in chat_id=%s",
+            archived,
+            user_id,
+            chat_id,
+        )
+        UserCollector.storage.set_archived(chat_id, user_id, archived)
+
+    @staticmethod
+    def is_archived(chat_id: int, user_id: int) -> bool:
+        return UserCollector.storage.is_archived(chat_id, user_id)
+
+    @staticmethod
+    def delete_user_data(chat_id: int, user_id: int) -> None:
+        logging.debug(
+            "Deleting user data for user_id=%s in chat_id=%s",
+            user_id,
+            chat_id,
+        )
+        UserCollector.storage.delete_chat_user_data(chat_id, user_id)
+
