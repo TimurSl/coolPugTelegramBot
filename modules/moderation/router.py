@@ -1742,6 +1742,7 @@ class AdvancedModerationModule:
         """Combine mute and mediamute into a single effective permission set."""
         permissions = ChatPermissions(
             can_send_messages=True,
+            can_send_other_messages=True,
             can_send_audios=True,
             can_send_documents=True,
             can_send_photos=True,
