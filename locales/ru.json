@@ -155,5 +155,7 @@
   "moderation.duration.seconds": "{count} seconds",
   "moderation.warn.usage": "❌ Please specify a user to warn or reply to their message.",
   "moderation.duration.hours": "{count} hours",
-  "moderation.warnlist.empty": "✅ This user has no active warnings."
+  "moderation.warnlist.empty": "✅ This user has no active warnings.",
+  "moderation.level.range": "❌ Level must be between 0 and 5.",
+  "moderation.level.invalid": "❌ Level must be a number between 0 and 5."
 }
