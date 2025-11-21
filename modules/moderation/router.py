@@ -8,6 +8,7 @@ import html
 import re
 import textwrap
 
+
 from aiogram import Bot, Router, F
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
@@ -28,11 +29,12 @@ from modules.moderation.command_restrictions import (
     _normalise_command_name,
     command_restrictions,
     extract_command_name,
-    get_effective_command_level,
+    get_effective_command_priority,
 )
 from modules.moderation import award_module, modlogs_module, report_module
 from modules.moderation.report_module import AppealState, ReportsState
 from modules.moderation.level_storage import moderation_levels
+from modules.moderation.rank_storage import ModeratorRank, moderator_ranks
 from modules.moderation.permission_check import PermissionChecker
 from modules.roleplay.nickname_storage import CustomNicknameStorage
 from utils.localization import gettext, language_from_message, normalize_language_code
@@ -112,11 +114,61 @@ class AdvancedModerationModule:
             "delreward": "Removed award from",
         }
 
+        self._known_commands: dict[str, int] = {
+            "ban": 1,
+            "unban": 1,
+            "mute": 1,
+            "unmute": 1,
+            "warn": 1,
+            "warnlist": 1,
+            "cleanwarnlist": 5,
+            "unwarn": 1,
+            "award": 1,
+            "delreward": 1,
+            "kick": 1,
+            "mediamute": 1,
+            "unmediamute": 1,
+            "restrictcommand": 5,
+            "restrict": 1,
+            "banlist": 1,
+            "cleanbanlist": 5,
+            "mutelist": 1,
+            "cleanmutelist": 5,
+            "mods": 1,
+            "addmodrank": 5,
+            "modedit": 5,
+            "delmodrank": 5,
+            "rankinfo": 1,
+            "modlevellist": 1,
+        }
+
     def _language(self, message: Message) -> str:
         return language_from_message(message)
 
     def _t(self, key: str, language: str, default: str, **kwargs) -> str:
         return gettext(key, language=language, default=default, **kwargs)
+
+    def _ensure_ranks(self, chat_id: int) -> list[ModeratorRank]:
+        moderator_ranks.ensure_defaults(chat_id)
+        return moderator_ranks.ordered_ranks(chat_id)
+
+    def _resolve_rank(self, chat_id: int, level: int) -> ModeratorRank:
+        moderator_ranks.ensure_defaults(chat_id)
+        return moderator_ranks.ensure_rank_for_level(chat_id, level)
+
+    def _resolve_rank_by_id(self, chat_id: int, rank_id: int) -> Optional[ModeratorRank]:
+        moderator_ranks.ensure_defaults(chat_id)
+        return moderator_ranks.get_rank(chat_id, rank_id)
+
+    def _effective_command_priorities(self, chat_id: int) -> dict[str, int]:
+        priorities: dict[str, int] = {}
+        for command, default_level in self._known_commands.items():
+            priorities[command] = get_effective_command_priority(
+                chat_id,
+                command,
+                default_level,
+            )
+        return priorities
 
     def _format_user_link(
         self,
@@ -965,6 +1017,13 @@ class AdvancedModerationModule:
             status = f"lvl {level}"
         return level, status
 
+    async def _get_member_rank(
+        self, message: Message, user_id: int
+    ) -> tuple[ModeratorRank, Optional[str]]:
+        level, status = await self._get_member_level(message, user_id)
+        rank = moderator_ranks.ensure_rank_for_level(message.chat.id, level)
+        return rank, status
+
     def _command_requirement(
         self,
         message: Message,
@@ -979,7 +1038,7 @@ class AdvancedModerationModule:
             candidates.append(command_name)
         candidates.append(canonical)
         candidates.extend(aliases)
-        required_level = get_effective_command_level(
+        required_level = get_effective_command_priority(
             message.chat.id,
             candidates[0],
             default_level,
@@ -1001,6 +1060,10 @@ class AdvancedModerationModule:
             key, separator, value = argument.partition("=")
             if separator and key.casefold() == "mention":
                 return self._parse_boolean_argument(value)
+
+            standalone = self._parse_boolean_argument(argument)
+            if standalone is not None:
+                return standalone
         return True
 
     async def _collect_mod_entries(
@@ -1044,6 +1107,7 @@ class AdvancedModerationModule:
         }
 
         for user_id, level in stored_levels.items():
+            self._resolve_rank(chat_id, level)
             await add_entry(user_id, level, is_admin=user_id in admin_ids)
 
         for admin in administrators:
@@ -1057,6 +1121,7 @@ class AdvancedModerationModule:
                     chat_id, user.id, status=admin.status
                 )
 
+            self._resolve_rank(chat_id, level)
             await add_entry(user.id, level, is_admin=True)
 
         return user_entries
@@ -1264,8 +1329,8 @@ class AdvancedModerationModule:
             default_level=1,
             canonical="banlist",
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -1346,8 +1411,8 @@ class AdvancedModerationModule:
             default_level=1,
             canonical="mutelist",
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -1445,8 +1510,8 @@ class AdvancedModerationModule:
             default_level=5,
             canonical="cleanmutelist",
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -1497,8 +1562,8 @@ class AdvancedModerationModule:
             default_level=5,
             canonical="cleanbanlist",
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -1547,8 +1612,8 @@ class AdvancedModerationModule:
             default_level=5,
             canonical="cleanwarnlist",
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -1620,8 +1685,8 @@ class AdvancedModerationModule:
             canonical="ban",
             aliases=("бан", "banan"),
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -1799,8 +1864,8 @@ class AdvancedModerationModule:
             canonical="mute",
             aliases=("мут",),
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -1937,8 +2002,8 @@ class AdvancedModerationModule:
             default_level=1,
             canonical="mediamute",
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -2043,8 +2108,8 @@ class AdvancedModerationModule:
             canonical="warn",
             aliases=("варн",),
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -2183,8 +2248,8 @@ class AdvancedModerationModule:
             default_level=1,
             canonical="warnlist",
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -2271,8 +2336,8 @@ class AdvancedModerationModule:
             canonical="kick",
             aliases=("кик",),
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -2387,8 +2452,8 @@ class AdvancedModerationModule:
             default_level=1,
             canonical="unban",
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -2461,8 +2526,8 @@ class AdvancedModerationModule:
             default_level=1,
             canonical="unmute",
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -2541,8 +2606,8 @@ class AdvancedModerationModule:
             default_level=1,
             canonical="unmute",
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -2622,8 +2687,8 @@ class AdvancedModerationModule:
             canonical="unwarn",
             aliases=("delwarn",),
         )
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
-        if actor_level < required_level:
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.denied",
@@ -2683,7 +2748,7 @@ class AdvancedModerationModule:
                 self._t(
                     "moderation.level.usage",
                     language,
-                    "Usage: /modlevel <0-5> [@user|id] (0 removes moderation access)",
+                    "Usage: /modlevel <rank_id> [@user|id] (0 removes moderation access)",
                 ),
                 parse_mode=None,
             )
@@ -2691,23 +2756,30 @@ class AdvancedModerationModule:
 
         args = parts[1:]
         try:
-            level = int(args[0])
+            rank_id = int(args[0])
         except ValueError:
             await message.reply(
                 self._t(
                     "moderation.level.invalid",
                     language,
-                    "❌ Level must be a number between 0 and 5.",
+                    "❌ Rank id must be a number.",
                 )
             )
             return
 
-        if level < 0 or level > 5:
+        target_rank: Optional[ModeratorRank]
+        if rank_id == 0:
+            target_rank = moderator_ranks.ensure_rank_for_level(message.chat.id, 0)
+        else:
+            target_rank = self._resolve_rank_by_id(message.chat.id, rank_id)
+
+        if not target_rank:
             await message.reply(
                 self._t(
-                    "moderation.level.range",
+                    "moderation.level.unknown_rank",
                     language,
-                    "❌ Level must be between 0 and 5.",
+                    "❌ Rank with id {id} was not found.",
+                    id=rank_id,
                 )
             )
             return
@@ -2760,10 +2832,17 @@ class AdvancedModerationModule:
                 member = await self._fetch_member(message, target_user_id)
                 target_user = getattr(member, "user", None) if member else None
 
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
+        actor_level, actor_status = await self._get_member_level(
+            message, message.from_user.id
+        )
         target_level, _ = await self._get_member_level(message, target_user_id)
+        actor_is_owner = actor_status == "creator"
 
-        if message.from_user.id != target_user_id and actor_level <= target_level:
+        if (
+            not actor_is_owner
+            and message.from_user.id != target_user_id
+            and actor_level <= target_level
+        ):
             await message.reply(
                 self._t(
                     "moderation.level.insufficient",
@@ -2773,7 +2852,7 @@ class AdvancedModerationModule:
             )
             return
 
-        if level > actor_level:
+        if not actor_is_owner and target_rank.level > actor_level:
             await message.reply(
                 self._t(
                     "moderation.level.too_high",
@@ -2791,27 +2870,410 @@ class AdvancedModerationModule:
                 or str(target_user_id)
             )
 
-        moderation_levels.set_level(message.chat.id, target_user_id, level)
+        moderation_levels.set_level(message.chat.id, target_user_id, target_rank.level)
         await message.reply(
             self._t(
                 "moderation.level.set",
                 language,
-                "✅ Moderation level for {name} set to {level}.",
+                "✅ Moderation level for {name} set to {level} ({rank}).",
                 name=target_name,
-                level=level,
+                level=target_rank.level,
+                rank=target_rank.name,
             )
         )
+
+    async def handle_mod_level_list(self, message: Message):
+        language = self._language(message)
+
+        required_level, command_display = self._command_requirement(
+            message,
+            default_level=1,
+            canonical="modlevellist",
+        )
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
+            await message.reply(
+                self._t(
+                    "moderation.command_restrict.denied",
+                    language,
+                    "❌ Only level {level}+ members can use {command}.",
+                    level=required_level,
+                    command=command_display,
+                ),
+                parse_mode=None,
+            )
+            return
+
+        ranks = self._ensure_ranks(message.chat.id)
+        header = self._t(
+            "moderation.modlevels.header",
+            language,
+            "<b>Available moderator ranks</b>",
+        )
+
+        lines = [header]
+        for rank in ranks:
+            lines.append(
+                self._t(
+                    "moderation.modlevels.entry",
+                    language,
+                    "#{id}: {name} — level {level}, priority {priority}",
+                    id=rank.id,
+                    name=rank.name,
+                    level=rank.level,
+                    priority=rank.priority,
+                )
+            )
+
+        await message.reply(
+            "\n".join(lines),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+
+    async def handle_delete_rank(self, message: Message):
+        language = self._language(message)
+        required_level, command_display = self._command_requirement(
+            message,
+            default_level=5,
+            canonical="delmodrank",
+        )
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
+            await message.reply(
+                self._t(
+                    "moderation.command_restrict.denied",
+                    language,
+                    "❌ Only level {level}+ members can use {command}.",
+                    level=required_level,
+                    command=command_display,
+                ),
+                parse_mode=None,
+            )
+            return
+
+        parts = (message.text or "").split()
+        if len(parts) < 2:
+            await message.reply(
+                self._t(
+                    "moderation.rank.delete_usage",
+                    language,
+                    "Usage: /delmodrank <rank_id>",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        try:
+            rank_id = int(parts[1])
+        except ValueError:
+            await message.reply(
+                self._t(
+                    "moderation.rank.id_invalid",
+                    language,
+                    "❌ Rank id must be numeric.",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        rank = self._resolve_rank_by_id(message.chat.id, rank_id)
+        if not rank:
+            await message.reply(
+                self._t(
+                    "moderation.rank.not_found",
+                    language,
+                    "❌ Rank #{id} was not found.",
+                    id=rank_id,
+                ),
+                parse_mode=None,
+            )
+            return
+
+        if moderator_ranks.is_default_rank(rank):
+            await message.reply(
+                self._t(
+                    "moderation.rank.delete_default",
+                    language,
+                    "❌ Default ranks cannot be deleted.",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        if not moderator_ranks.delete_rank(message.chat.id, rank_id):
+            await message.reply(
+                self._t(
+                    "moderation.rank.delete_failed",
+                    language,
+                    "❌ Could not delete that rank.",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        await message.reply(
+            self._t(
+                "moderation.rank.deleted",
+                language,
+                "🗑 Rank #{id} has been deleted.",
+                id=rank_id,
+            ),
+            parse_mode=None,
+        )
+
+    async def handle_add_rank(self, message: Message):
+        language = self._language(message)
+        required_level, command_display = self._command_requirement(
+            message,
+            default_level=5,
+            canonical="addmodrank",
+        )
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
+            await message.reply(
+                self._t(
+                    "moderation.command_restrict.denied",
+                    language,
+                    "❌ Only level {level}+ members can use {command}.",
+                    level=required_level,
+                    command=command_display,
+                ),
+                parse_mode=None,
+            )
+            return
+
+        parts = (message.text or "").split(maxsplit=2)
+        if len(parts) < 3:
+            await message.reply(
+                self._t(
+                    "moderation.rank.add_usage",
+                    language,
+                    "Usage: /addmodrank <name> <priority>",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        name = parts[1]
+        priority_part = parts[2]
+        try:
+            priority = int(priority_part)
+        except ValueError:
+            await message.reply(
+                self._t(
+                    "moderation.rank.priority_invalid",
+                    language,
+                    "❌ Priority must be a number.",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        try:
+            rank = moderator_ranks.add_rank(message.chat.id, name, priority)
+        except ValueError:
+            await message.reply(
+                self._t(
+                    "moderation.rank.name_required",
+                    language,
+                    "❌ Please provide a non-empty name for the rank.",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        await message.reply(
+            self._t(
+                "moderation.rank.added",
+                language,
+                "✅ Rank #{id} created: {name} (level {level}, priority {priority}).",
+                id=rank.id,
+                name=rank.name,
+                level=rank.level,
+                priority=rank.priority,
+            ),
+            parse_mode=None,
+        )
+
+    async def handle_edit_rank(self, message: Message):
+        language = self._language(message)
+        required_level, command_display = self._command_requirement(
+            message,
+            default_level=5,
+            canonical="modedit",
+        )
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
+            await message.reply(
+                self._t(
+                    "moderation.command_restrict.denied",
+                    language,
+                    "❌ Only level {level}+ members can use {command}.",
+                    level=required_level,
+                    command=command_display,
+                ),
+                parse_mode=None,
+            )
+            return
+
+        parts = (message.text or "").split(maxsplit=2)
+        if len(parts) < 3:
+            await message.reply(
+                self._t(
+                    "moderation.rank.edit_usage",
+                    language,
+                    "Usage: /modedit <rank_id> <new name>",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        try:
+            rank_id = int(parts[1])
+        except ValueError:
+            await message.reply(
+                self._t(
+                    "moderation.rank.id_invalid",
+                    language,
+                    "❌ Rank id must be numeric.",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        new_name = parts[2].strip()
+        rank = self._resolve_rank_by_id(message.chat.id, rank_id)
+        if not rank:
+            await message.reply(
+                self._t(
+                    "moderation.rank.not_found",
+                    language,
+                    "❌ Rank with id {id} was not found.",
+                    id=rank_id,
+                ),
+                parse_mode=None,
+            )
+            return
+
+        if not moderator_ranks.rename_rank(message.chat.id, rank_id, new_name):
+            await message.reply(
+                self._t(
+                    "moderation.rank.rename_failed",
+                    language,
+                    "❌ Could not rename rank. Provide a valid name.",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        await message.reply(
+            self._t(
+                "moderation.rank.renamed",
+                language,
+                "✅ Rank #{id} renamed to {name}.",
+                id=rank_id,
+                name=new_name,
+            ),
+            parse_mode=None,
+        )
+
+    async def handle_rank_info(self, message: Message, bot: Bot):
+        language = self._language(message)
+        parts = (message.text or "").split(maxsplit=1)
+        if len(parts) < 2:
+            await message.reply(
+                self._t(
+                    "moderation.rank.info_usage",
+                    language,
+                    "Usage: /rankinfo <rank_id>",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        try:
+            rank_id = int(parts[1])
+        except ValueError:
+            await message.reply(
+                self._t(
+                    "moderation.rank.id_invalid",
+                    language,
+                    "❌ Rank id must be numeric.",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        rank = self._resolve_rank_by_id(message.chat.id, rank_id)
+        if not rank:
+            await message.reply(
+                self._t(
+                    "moderation.rank.not_found",
+                    language,
+                    "❌ Rank with id {id} was not found.",
+                    id=rank_id,
+                ),
+                parse_mode=None,
+            )
+            return
+
+        levels = moderation_levels.get_levels_for_chat(message.chat.id)
+        users = [
+            await self._resolve_display_name(message, user_id)
+            for user_id, level in levels.items()
+            if level == rank.level
+        ]
+
+        command_priorities = self._effective_command_priorities(message.chat.id)
+        available_commands = [
+            command for command, required in sorted(command_priorities.items())
+            if rank.priority >= required
+        ]
+
+        lines = [
+            self._t(
+                "moderation.rank.info_header",
+                language,
+                "<b>Rank #{id}</b> — {name}",
+                id=rank.id,
+                name=html.escape(rank.name),
+            ),
+            self._t(
+                "moderation.rank.info_meta",
+                language,
+                "Level: {level}\nPriority: {priority}",
+                level=rank.level,
+                priority=rank.priority,
+            ),
+            self._t(
+                "moderation.rank.info_commands",
+                language,
+                "Commands ({count}): {commands}",
+                count=len(available_commands),
+                commands=", ".join(f"/{cmd}" for cmd in available_commands) or "—",
+            ),
+            self._t(
+                "moderation.rank.info_users",
+                language,
+                "Users ({count}): {users}",
+                count=len(users),
+                users=", ".join(users) if users else "—",
+            ),
+        ]
+
+        await message.reply("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
     async def handle_restrict_command_level(self, message: Message):
         language = self._language(message)
 
-        actor_level, _ = await self._get_member_level(message, message.from_user.id)
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
         required_level, _ = self._command_requirement(
             message,
             default_level=5,
             canonical="restrictcommand",
         )
-        if actor_level < required_level:
+        if actor_rank.priority < required_level:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.permission_denied",
@@ -2830,31 +3292,31 @@ class AdvancedModerationModule:
                 self._t(
                     "moderation.command_restrict.usage",
                     language,
-                    "Usage: /restrictcommand <level 0-5> <command> (use level 0 to remove)",
+                    "Usage: /restrictcommand <rank id or priority> <command> (use 0 to remove)",
                 ),
                 parse_mode=None,
             )
             return
 
         try:
-            level = int(parts[1])
+            priority_input = int(parts[1])
         except ValueError:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.level_range",
                     language,
-                    "❌ Level must be a number between 0 and 5.",
+                    "❌ Priority must be a number (use rank id or explicit priority).",
                 ),
                 parse_mode=None,
             )
             return
 
-        if level < 0 or level > 5:
+        if priority_input < 0:
             await message.reply(
                 self._t(
                     "moderation.command_restrict.level_range",
                     language,
-                    "❌ Level must be a number between 0 and 5.",
+                    "❌ Priority must be zero or a positive number.",
                 ),
                 parse_mode=None,
             )
@@ -2874,8 +3336,8 @@ class AdvancedModerationModule:
 
         display_command = f"/{command_name}"
 
-        if level == 0:
-            command_restrictions.clear_command_level(message.chat.id, command_name)
+        if priority_input == 0:
+            command_restrictions.clear_command_priority(message.chat.id, command_name)
             await message.reply(
                 self._t(
                     "moderation.command_restrict.cleared",
@@ -2887,14 +3349,21 @@ class AdvancedModerationModule:
             )
             return
 
-        command_restrictions.set_command_level(message.chat.id, command_name, level)
+        target_rank = self._resolve_rank_by_id(message.chat.id, priority_input)
+        target_priority = target_rank.priority if target_rank else priority_input
+        priority_label = target_rank.name if target_rank else str(target_priority)
+
+        command_restrictions.set_command_priority(
+            message.chat.id, command_name, target_priority
+        )
         await message.reply(
             self._t(
                 "moderation.command_restrict.set",
                 language,
-                "✅ Command {command} now requires level {level}.",
+                "✅ Command {command} now requires priority {level}+ ({name}).",
                 command=display_command,
-                level=level,
+                level=target_priority,
+                name=priority_label,
             ),
             parse_mode=None,
         )
@@ -2934,18 +3403,24 @@ class AdvancedModerationModule:
             levels_to_entries.setdefault(entry.level, []).append(entry)
 
         lines: list[str] = []
-        for level in range(5, 0, -1):
-            entries = levels_to_entries.get(level)
+        for rank in self._ensure_ranks(message.chat.id):
+            entries = levels_to_entries.get(rank.level)
             if not entries:
                 continue
 
-            stars = "⭐️" * level
+            stars = "⭐️" * max(min(rank.level, 5), 1)
+            is_default_rank = moderator_ranks.is_default_rank(rank)
+            base_name = rank.name.strip() or f"Mod Level {rank.priority}"
+            prefix = f"{stars} " if is_default_rank else ""
+            label = base_name
             header = self._t(
                 "moderation.mods.header",
                 language,
-                "{stars} Mod Level {level}:",
-                stars=stars,
-                level=level,
+                "{stars}{label} (priority {priority}, #{id}):",
+                stars=prefix,
+                label=label,
+                id=rank.id,
+                priority=rank.priority,
             )
             lines.append(header)
             for entry in sorted(entries, key=lambda item: item.sort_key):
@@ -3212,6 +3687,29 @@ async def delete_award_handler(message: Message, bot: Bot):
 @router.message(Command("modlevel"))
 async def modlevel_handler(message: Message):
     await moderation_module.handle_mod_level(message)
+
+@router.message(Command("modlevellist"))
+async def modlevellist_handler(message: Message):
+    await moderation_module.handle_mod_level_list(message)
+
+@router.message(Command("addmodrank"))
+async def addmodrank_handler(message: Message):
+    await moderation_module.handle_add_rank(message)
+
+
+@router.message(Command("delmodrank"))
+async def delmodrank_handler(message: Message):
+    await moderation_module.handle_delete_rank(message)
+
+
+@router.message(Command("modedit"))
+async def modedit_handler(message: Message):
+    await moderation_module.handle_edit_rank(message)
+
+
+@router.message(Command("rankinfo"))
+async def rankinfo_handler(message: Message, bot: Bot):
+    await moderation_module.handle_rank_info(message, bot)
 
 
 @router.message(Command("restrictcommand"))

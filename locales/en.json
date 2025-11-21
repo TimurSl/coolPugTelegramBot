@@ -323,8 +323,18 @@
   "documentation.sections.moderation.content.10": "<b>/award</b> — give a user a custom award.",
   "documentation.sections.moderation.content.11": "<b>/delreward</b> — remove a previously issued award.",
   "documentation.sections.moderation.content.12": "<b>/mods</b> — show every moderator grouped by level (add <code>mention=off</code> to hide profile links).",
-  "moderation.mods.header": "{stars} Mod Level {level}:",
+  "moderation.mods.header": "{stars}{label} (priority {priority}, #{id}):",
   "moderation.mutelist.type.mute": "text",
   "moderation.mutelist.type.mediamute": "media",
-  "moderation.warnlist.empty": "✅ This user has no active warnings."
+  "moderation.warnlist.empty": "✅ This user has no active warnings.",
+  "moderation.rank.info_usage": "Usage: /rankinfo <rank_id>",
+  "moderation.rank.edit_usage": "Usage: /modedit <rank_id> <new name>",
+  "moderation.rank.not_found": "❌ Rank with id {id} was not found.",
+  "moderation.rank.add_usage": "Usage: /addmodrank <name> <priority>",
+  "moderation.rank.added": "✅ Rank #{id} created: {name} (level {level}, priority {priority}).",
+  "moderation.rank.renamed": "✅ Rank #{id} renamed to {name}.",
+  "moderation.rank.info_header": "<b>Rank #{id}</b> — {name}",
+  "moderation.rank.info_meta": "Level: {level}\nPriority: {priority}",
+  "moderation.rank.info_commands": "Commands ({count}): {commands}",
+  "moderation.rank.info_users": "Users ({count}): {users}"
 }

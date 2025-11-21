@@ -313,5 +313,5 @@
   "documentation.sections.moderation.content.10": "<b>/award</b> — give a user a custom award.",
   "documentation.sections.moderation.content.11": "<b>/delreward</b> — remove a previously issued award.",
   "documentation.sections.moderation.content.12": "<b>/mods</b> — show every moderator grouped by level (add <code>mention=off</code> to hide profile links).",
-  "moderation.mods.header": "{stars} Mod Level {level}:"
+  "moderation.mods.header": "{stars}{label} (priority {priority}, #{id}):"
 }

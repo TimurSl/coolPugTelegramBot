@@ -6,6 +6,7 @@ import logging
 from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.types import Message, TelegramObject
 
 
@@ -43,6 +44,15 @@ class LoggingMiddleware(BaseMiddleware):
                 },
             )
             return result
+        except SkipHandler:
+            logger.debug(
+                "handler skipped",
+                extra={
+                    "type": type(event).__name__,
+                    "handler": getattr(handler, "__qualname__", repr(handler)),
+                },
+            )
+            raise
         except Exception:
             logger.exception(
                 "handler raised exception",

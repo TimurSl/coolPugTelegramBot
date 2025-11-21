@@ -45,7 +45,7 @@ class CommandRestrictionStorage:
             )
         logging.debug("CommandRestrictionStorage schema ensured")
 
-    def set_command_level(self, chat_id: int, command: str, level: int) -> None:
+    def set_command_priority(self, chat_id: int, command: str, priority: int) -> None:
         normalised = _normalise_command_name(command)
         if not normalised:
             raise ValueError("Command name cannot be empty")
@@ -58,16 +58,16 @@ class CommandRestrictionStorage:
                     VALUES (?, ?, ?)
                     ON CONFLICT(chat_id, command) DO UPDATE SET level = excluded.level
                     """,
-                    (chat_id, normalised, level),
+                    (chat_id, normalised, priority),
                 )
         logging.debug(
-            "Set restriction for chat_id=%s command=%s level=%s",
+            "Set restriction for chat_id=%s command=%s priority=%s",
             chat_id,
             normalised,
-            level,
+            priority,
         )
 
-    def clear_command_level(self, chat_id: int, command: str) -> bool:
+    def clear_command_priority(self, chat_id: int, command: str) -> bool:
         normalised = _normalise_command_name(command)
         if not normalised:
             return False
@@ -87,7 +87,7 @@ class CommandRestrictionStorage:
         )
         return deleted
 
-    def get_command_level(self, chat_id: int, command: str) -> Optional[int]:
+    def get_command_priority(self, chat_id: int, command: str) -> Optional[int]:
         normalised = _normalise_command_name(command)
         if not normalised:
             return None
@@ -113,7 +113,7 @@ class CommandRestrictionStorage:
         )
         return None
 
-    def list_command_levels(self, chat_id: int) -> dict[str, int]:
+    def list_command_priorities(self, chat_id: int) -> dict[str, int]:
         with self._lock:
             with self._get_connection() as conn:
                 rows = conn.execute(
@@ -138,10 +138,10 @@ def extract_command_name(text: Optional[str]) -> Optional[str]:
     return normalised or None
 
 
-def get_effective_command_level(
+def get_effective_command_priority(
     chat_id: int,
     command: str,
-    default_level: int,
+    default_priority: int,
     *,
     aliases: Sequence[str] = (),
 ) -> int:
@@ -159,16 +159,41 @@ def get_effective_command_level(
         return result
 
     for candidate in _candidates():
-        override = command_restrictions.get_command_level(chat_id, candidate)
+        override = command_restrictions.get_command_priority(chat_id, candidate)
         if override is not None:
             return override
-    return default_level
+    return default_priority
+
+
+def get_effective_command_level(
+    chat_id: int,
+    command: str,
+    default_level: int,
+    *,
+    aliases: Sequence[str] = (),
+) -> int:
+    """
+    Backwards-compatible wrapper that reuses priority-based lookup.
+
+    Existing callers still rely on the old function name and parameter, but
+    restrictions are now stored and compared using rank priority. The
+    semantics remain identical: return any chat-specific override when
+    present, otherwise fall back to the provided default.
+    """
+
+    return get_effective_command_priority(
+        chat_id,
+        command,
+        default_level,
+        aliases=aliases,
+    )
 
 
 __all__ = [
     "CommandRestrictionStorage",
     "command_restrictions",
     "extract_command_name",
+    "get_effective_command_priority",
     "get_effective_command_level",
     "_normalise_command_name",
 ]
