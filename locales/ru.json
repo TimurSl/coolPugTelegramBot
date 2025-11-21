@@ -92,7 +92,7 @@
   "moderation.level.usage": "Usage: /modlevel <0-5> [@user|id] (0 removes moderation access)",
   "filters.add.usage": "Usage: /filteradd [--regex] word (command must reply to a message)",
   "filters.add.success": "✅ Template #{template_id} for {trigger_label} saved.",
-  "moderation.mods.header": "{stars} Mod Level {level}:",
+  "moderation.mods.header": "{stars}{label} (priority {priority}, #{id}):",
   "moderation.level.reply_required": "❌ Reply to a user's message or specify a username/ID to set their level.",
   "moderation.duration.permanent": "permanent",
   "moderation.ban.response": "🔨 <b>User Banned</b>\n👤 User: {user_id}\n⏱ Duration: {duration}\n📝 Reason: {reason}\n👮‍♂️ By: @{admin}",
@@ -163,5 +163,11 @@
   "moderation.rank.not_found": "❌ Rank with id {id} was not found.",
   "moderation.rank.add_usage": "Usage: /addmodrank <name> <priority>",
   "moderation.rank.added": "✅ Rank #{id} created: {name} (level {level}, priority {priority}).",
-  "moderation.level.insufficient": "❌ You cannot change the level of someone with equal or higher rank."
+  "moderation.level.insufficient": "❌ You cannot change the level of someone with equal or higher rank.",
+  "moderation.rank.renamed": "✅ Rank #{id} renamed to {name}.",
+  "moderation.rank.info_header": "<b>Rank #{id}</b> — {name}",
+  "moderation.rank.info_meta": "Level: {level}\nPriority: {priority}",
+  "moderation.rank.info_commands": "Commands ({count}): {commands}",
+  "moderation.rank.info_users": "Users ({count}): {users}",
+  "moderation.command_restrict.cleared": "🧹 Restriction removed for {command}. Anyone can use it now."
 }

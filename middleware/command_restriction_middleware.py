@@ -9,6 +9,7 @@ from modules.moderation.command_restrictions import (
     command_restrictions,
 )
 from modules.moderation.level_storage import moderation_levels
+from modules.moderation.rank_storage import moderator_ranks
 from utils.localization import gettext, language_from_message
 
 
@@ -26,10 +27,10 @@ class CommandRestrictionMiddleware(BaseMiddleware):
         if isinstance(event, Message):
             command_name = self._extract_command_name(event.text or event.caption)
             if command_name and event.chat and event.from_user:
-                required_level = command_restrictions.get_command_level(
+                required_priority = command_restrictions.get_command_priority(
                     event.chat.id, command_name
                 )
-                if required_level is not None:
+                if required_priority is not None:
                     status = None
                     bot = data.get("bot")
                     if bot is not None:
@@ -48,13 +49,17 @@ class CommandRestrictionMiddleware(BaseMiddleware):
                         event.from_user.id,
                         status=status,
                     )
-                    if user_level < required_level:
+                    user_priority = moderator_ranks.ensure_rank_for_level(
+                        event.chat.id, user_level
+                    ).priority
+
+                    if user_priority < required_priority:
                         language = language_from_message(event)
                         reply_text = gettext(
                             "moderation.command_restrict.denied",
                             language=language,
                             default="❌ Only level {level}+ members can use {command}.",
-                            level=required_level,
+                            level=required_priority,
                             command=f"/{command_name}",
                         )
                         await event.answer(reply_text, parse_mode=None)
