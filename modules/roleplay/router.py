@@ -715,6 +715,8 @@ async def _send_profile_response(message: Message, language: str, arg_text: str)
     target_user = message.from_user
     target_user_id = target_user.id
     target_user_entity = None
+    mention_usernames: list[str] = []
+    text_content = (message.text or message.caption or "")
 
     if message.reply_to_message and message.reply_to_message.from_user:
         target_user = message.reply_to_message.from_user
@@ -728,6 +730,15 @@ async def _send_profile_response(message: Message, language: str, arg_text: str)
                     target_user_entity = entity.user
                     target_user_id = entity.user.id
                     break
+                if (
+                    getattr(entity, "type", None) == "mention"
+                    and text_content
+                    and getattr(entity, "offset", None) is not None
+                    and getattr(entity, "length", None) is not None
+                ):
+                    mention_usernames.append(
+                        text_content[entity.offset : entity.offset + entity.length]
+                    )
 
         if target_user_entity is None and args:
             for arg in args:
@@ -738,6 +749,13 @@ async def _send_profile_response(message: Message, language: str, arg_text: str)
                         break
                 elif arg.isdigit():
                     target_user_id = int(arg)
+                    break
+
+        if target_user_entity is None and mention_usernames:
+            for username in mention_usernames:
+                resolved_id = UserCollector.get_id(username)
+                if resolved_id:
+                    target_user_id = resolved_id
                     break
 
         if target_user_entity:

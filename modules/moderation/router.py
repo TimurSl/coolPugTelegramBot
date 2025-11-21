@@ -135,6 +135,7 @@ class AdvancedModerationModule:
             "mutelist": 1,
             "cleanmutelist": 5,
             "mods": 1,
+            "lostmembers": 3,
             "addmodrank": 5,
             "modedit": 5,
             "delmodrank": 5,
@@ -746,6 +747,66 @@ class AdvancedModerationModule:
 
         return eligible
 
+    def _build_lost_members_keyboard(self, chat_id: int) -> InlineKeyboardMarkup:
+        builder = InlineKeyboardBuilder()
+        builder.button(
+            text="🗂 Archive all",
+            callback_data=f"lost:archive:{chat_id}",
+        )
+        builder.button(
+            text="🗑 Delete all",
+            callback_data=f"lost:delete:{chat_id}",
+        )
+        builder.adjust(2)
+        return builder.as_markup()
+
+    async def _find_lost_members(
+        self, bot: Bot, chat_id: int
+    ) -> list[dict[str, object]]:
+        candidates = UserCollector.get_chat_users(chat_id)
+        lost: list[dict[str, object]] = []
+
+        for entry in candidates:
+            user_id = entry.get("user_id")
+            if not isinstance(user_id, int):
+                continue
+
+            status: Optional[str]
+            try:
+                member = await bot.get_chat_member(chat_id, user_id)
+                status = getattr(member, "status", None)
+            except TelegramAPIError:
+                status = "left"
+
+            if status in {"left", "kicked"}:
+                lost.append(entry)
+
+        return lost
+
+    def _format_lost_member_line(self, entry: dict[str, object]) -> str:
+        user_id = int(entry.get("user_id", 0))
+        username = entry.get("username")
+        display_name = entry.get("display_name")
+        fallback = (
+            display_name
+            or (f"@{username}" if isinstance(username, str) else None)
+            or str(user_id)
+        )
+        return self._format_user_link(user_id, fallback=fallback)
+
+    def _render_lost_members_text(
+        self, lost_members: list[dict[str, object]], language: str
+    ) -> str:
+        header = self._t(
+            "moderation.lost_members.header",
+            language,
+            "🚶 Members who left the chat:",
+        )
+        lines = [f"<b>{html.escape(header)}</b>", ""]
+        for index, entry in enumerate(lost_members, start=1):
+            lines.append(f"{index}. {self._format_lost_member_line(entry)}")
+        return "\n".join(lines)
+
     async def _ensure_chat_title(
         self, bot: Bot, chat_id: int, cache: dict[int, str]
     ) -> str:
@@ -1107,12 +1168,17 @@ class AdvancedModerationModule:
         }
 
         for user_id, level in stored_levels.items():
+            if UserCollector.is_archived(chat_id, user_id):
+                continue
             self._resolve_rank(chat_id, level)
             await add_entry(user_id, level, is_admin=user_id in admin_ids)
 
         for admin in administrators:
             user = admin.user
             if not user:
+                continue
+
+            if UserCollector.is_archived(chat_id, user.id):
                 continue
 
             level = stored_levels.get(user.id)
@@ -3178,6 +3244,57 @@ class AdvancedModerationModule:
             parse_mode=None,
         )
 
+    async def handle_lost_members(self, message: Message, bot: Bot):
+        language = self._language(message)
+        chat_id = getattr(getattr(message, "chat", None), "id", None)
+
+        if chat_id is None or chat_id > 0:
+            await message.reply(
+                self._t(
+                    "moderation.lost_members.unsupported",
+                    language,
+                    "❌ This command can only be used in groups.",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        required_level, command_display = self._command_requirement(
+            message, default_level=3, canonical="lostmembers"
+        )
+        actor_rank, _ = await self._get_member_rank(message, message.from_user.id)
+        if actor_rank.priority < required_level:
+            await message.reply(
+                self._t(
+                    "moderation.command_restrict.denied",
+                    language,
+                    "❌ Only level {level}+ members can use {command}.",
+                    level=required_level,
+                    command=command_display,
+                ),
+                parse_mode=None,
+            )
+            return
+
+        lost_members = await self._find_lost_members(bot, chat_id)
+        if not lost_members:
+            await message.reply(
+                self._t(
+                    "moderation.lost_members.empty",
+                    language,
+                    "🎉 There are no departed members to process.",
+                ),
+                parse_mode=None,
+            )
+            return
+
+        await message.reply(
+            self._render_lost_members_text(lost_members, language),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+            reply_markup=self._build_lost_members_keyboard(chat_id),
+        )
+
     async def handle_rank_info(self, message: Message, bot: Bot):
         language = self._language(message)
         parts = (message.text or "").split(maxsplit=1)
@@ -3223,6 +3340,7 @@ class AdvancedModerationModule:
             await self._resolve_display_name(message, user_id)
             for user_id, level in levels.items()
             if level == rank.level
+            and not UserCollector.is_archived(message.chat.id, user_id)
         ]
 
         command_priorities = self._effective_command_priorities(message.chat.id)
@@ -3263,6 +3381,144 @@ class AdvancedModerationModule:
         ]
 
         await message.reply("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
+
+    async def handle_lost_members_action(self, callback: CallbackQuery, bot: Bot):
+        message = callback.message
+        if not message or not message.chat:
+            await callback.answer("Message is no longer available", show_alert=True)
+            return
+
+        language = self._language(message)
+        data = (callback.data or "").split(":")
+        if len(data) != 3:
+            await callback.answer(
+                self._t(
+                    "moderation.lost_members.invalid_action",
+                    language,
+                    "❌ Unable to process this action.",
+                ),
+                show_alert=True,
+            )
+            return
+
+        _, action, chat_id_raw = data
+        try:
+            chat_id = int(chat_id_raw)
+        except ValueError:
+            await callback.answer(
+                self._t(
+                    "moderation.lost_members.invalid_action",
+                    language,
+                    "❌ Unable to process this action.",
+                ),
+                show_alert=True,
+            )
+            return
+
+        if chat_id != message.chat.id:
+            await callback.answer(
+                self._t(
+                    "moderation.lost_members.wrong_chat",
+                    language,
+                    "❌ This action belongs to another chat.",
+                ),
+                show_alert=True,
+            )
+            return
+
+        required_level, _ = self._command_requirement(
+            message, default_level=3, canonical="lostmembers"
+        )
+        actor_rank, _ = await self._get_member_rank(message, callback.from_user.id)
+        if actor_rank.priority < required_level:
+            await callback.answer(
+                self._t(
+                    "moderation.command_restrict.denied",
+                    language,
+                    "❌ Only level {level}+ members can use this action.",
+                    level=required_level,
+                ),
+                show_alert=True,
+            )
+            return
+
+        lost_members = await self._find_lost_members(bot, chat_id)
+        if not lost_members:
+            await callback.answer(
+                self._t(
+                    "moderation.lost_members.empty",
+                    language,
+                    "🎉 There are no departed members to process.",
+                )
+            )
+            with suppress(TelegramAPIError):
+                await message.edit_text(
+                    self._t(
+                        "moderation.lost_members.empty",
+                        language,
+                        "🎉 There are no departed members to process.",
+                    ),
+                    parse_mode=None,
+                )
+            return
+
+        if action == "archive":
+            for entry in lost_members:
+                user_id = entry.get("user_id")
+                if isinstance(user_id, int):
+                    UserCollector.set_archived(chat_id, user_id, True)
+            result_text = self._t(
+                "moderation.lost_members.archived",
+                language,
+                "Archived {count} member(s).",
+                count=len(lost_members),
+            )
+        elif action == "delete":
+            for entry in lost_members:
+                user_id = entry.get("user_id")
+                if not isinstance(user_id, int):
+                    continue
+                UserCollector.delete_user_data(chat_id, user_id)
+                moderation_levels.clear_level(chat_id, user_id)
+            result_text = self._t(
+                "moderation.lost_members.deleted",
+                language,
+                "Deleted {count} member(s) from records.",
+                count=len(lost_members),
+            )
+        else:
+            await callback.answer(
+                self._t(
+                    "moderation.lost_members.invalid_action",
+                    language,
+                    "❌ Unable to process this action.",
+                ),
+                show_alert=True,
+            )
+            return
+
+        updated_lost_members = await self._find_lost_members(bot, chat_id)
+
+        if updated_lost_members:
+            with suppress(TelegramAPIError):
+                await message.edit_text(
+                    self._render_lost_members_text(updated_lost_members, language),
+                    parse_mode="HTML",
+                    disable_web_page_preview=True,
+                    reply_markup=self._build_lost_members_keyboard(chat_id),
+                )
+        else:
+            with suppress(TelegramAPIError):
+                await message.edit_text(
+                    self._t(
+                        "moderation.lost_members.cleaned",
+                        language,
+                        "✅ No more departed members left in records.",
+                    ),
+                    parse_mode=None,
+                )
+
+        await callback.answer(result_text)
 
     async def handle_restrict_command_level(self, message: Message):
         language = self._language(message)
@@ -3624,9 +3880,19 @@ async def cleanmutelist_command_handler(message: Message, bot: Bot):
     await moderation_module.handle_clean_mutelist(message, bot)
 
 
+@router.message(Command("lostmembers"))
+async def lost_members_command_handler(message: Message, bot: Bot):
+    await moderation_module.handle_lost_members(message, bot)
+
+
 @router.message(Command("modlogs"))
 async def modlogs_command_handler(message: Message, bot: Bot):
     await moderation_module.handle_modlogs(message, bot)
+
+
+@router.callback_query(F.data.startswith("lost:"))
+async def lost_members_callback_handler(callback: CallbackQuery, bot: Bot):
+    await moderation_module.handle_lost_members_action(callback, bot)
 
 
 @router.callback_query(F.data.startswith("modlogs:"))

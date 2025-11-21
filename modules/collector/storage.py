@@ -43,6 +43,7 @@ class UserStorage:
                     username TEXT NOT NULL,
                     user_id INTEGER NOT NULL,
                     display_name TEXT,
+                    archived INTEGER DEFAULT 0,
                     PRIMARY KEY (chat_id, username),
                     UNIQUE (chat_id, user_id)
                 )
@@ -77,6 +78,11 @@ class UserStorage:
                 logging.info("Adding display_name column to chat_users table")
                 conn.execute(
                     "ALTER TABLE chat_users ADD COLUMN display_name TEXT"
+                )
+            if "archived" not in columns:
+                logging.info("Adding archived column to chat_users table")
+                conn.execute(
+                    "ALTER TABLE chat_users ADD COLUMN archived INTEGER DEFAULT 0"
                 )
         logging.debug("UserStorage database initialised at %s", self.db_path)
 
@@ -199,18 +205,19 @@ class UserStorage:
             conn.execute(
                 """
                 UPDATE chat_users
-                SET username = ?, display_name = COALESCE(?, display_name)
+                SET username = ?, display_name = COALESCE(?, display_name), archived = 0
                 WHERE chat_id = ? AND user_id = ?
                 """,
                 (normalised_username, display_name, chat_id, user_id),
             )
             conn.execute(
                 """
-                INSERT INTO chat_users (chat_id, username, user_id, display_name)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO chat_users (chat_id, username, user_id, display_name, archived)
+                VALUES (?, ?, ?, ?, 0)
                 ON CONFLICT(chat_id, username) DO UPDATE SET
                     user_id = excluded.user_id,
-                    display_name = COALESCE(excluded.display_name, chat_users.display_name)
+                    display_name = COALESCE(excluded.display_name, chat_users.display_name),
+                    archived = 0
                 """,
                 (chat_id, normalised_username, user_id, display_name),
             )
@@ -457,8 +464,10 @@ class UserStorage:
                 MAX(cu.username) AS chat_username,
                 MAX(u.username) AS global_username
             FROM message_stats ms
-            LEFT JOIN chat_users cu
-                ON cu.chat_id = ms.chat_id AND cu.user_id = ms.user_id
+            JOIN chat_users cu
+                ON cu.chat_id = ms.chat_id
+                AND cu.user_id = ms.user_id
+                AND COALESCE(cu.archived, 0) = 0
             LEFT JOIN users u ON u.user_id = ms.user_id
             WHERE {where_clause}
             GROUP BY ms.user_id
@@ -531,7 +540,7 @@ class UserStorage:
                 rows = conn.execute(
                     """
                     SELECT user_id FROM chat_users
-                    WHERE chat_id = ?
+                    WHERE chat_id = ? AND COALESCE(archived, 0) = 0
                     ORDER BY user_id ASC
                     """,
                     (chat_id,),
@@ -546,4 +555,78 @@ class UserStorage:
             unique_ids.append(user_id)
 
         return unique_ids
+
+    def get_chat_users(
+        self, chat_id: int, *, include_archived: bool = False
+    ) -> List[Dict[str, Any]]:
+        with self._lock:
+            with self._get_connection() as conn:
+                query = """
+                    SELECT user_id, username, display_name, archived
+                    FROM chat_users
+                    WHERE chat_id = ?
+                """
+                params: list[Any] = [chat_id]
+                if not include_archived:
+                    query += " AND COALESCE(archived, 0) = 0"
+
+                rows = conn.execute(query, params).fetchall()
+
+        results: List[Dict[str, Any]] = []
+        for user_id, username, display_name, archived in rows:
+            results.append(
+                {
+                    "user_id": int(user_id),
+                    "username": username,
+                    "display_name": display_name,
+                    "archived": bool(archived),
+                }
+            )
+        return results
+
+    def set_archived(self, chat_id: int, user_id: int, archived: bool) -> None:
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.execute(
+                    """
+                    UPDATE chat_users
+                    SET archived = ?
+                    WHERE chat_id = ? AND user_id = ?
+                    """,
+                    (1 if archived else 0, chat_id, user_id),
+                )
+
+    def is_archived(self, chat_id: int, user_id: int) -> bool:
+        with self._lock:
+            with self._get_connection() as conn:
+                row = conn.execute(
+                    """
+                    SELECT archived FROM chat_users
+                    WHERE chat_id = ? AND user_id = ?
+                    """,
+                    (chat_id, user_id),
+                ).fetchone()
+
+        if not row:
+            return False
+        try:
+            return bool(int(row[0]))
+        except (TypeError, ValueError):
+            return False
+
+    def delete_chat_user_data(self, chat_id: int, user_id: int) -> None:
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.execute(
+                    "DELETE FROM chat_users WHERE chat_id = ? AND user_id = ?",
+                    (chat_id, user_id),
+                )
+                conn.execute(
+                    "DELETE FROM user_presence WHERE chat_id = ? AND user_id = ?",
+                    (chat_id, user_id),
+                )
+                conn.execute(
+                    "DELETE FROM message_stats WHERE chat_id = ? AND user_id = ?",
+                    (chat_id, user_id),
+                )
 
