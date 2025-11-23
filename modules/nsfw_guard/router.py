@@ -3,25 +3,15 @@
 from __future__ import annotations
 
 import logging
-<<<<<<< ours
-from io import BytesIO
-from typing import Optional
-
-from aiogram import F, Router
-=======
 from typing import Optional
 
 from aiogram import Router
->>>>>>> theirs
 from aiogram.filters import Command
 from aiogram.types import Message
 
 from modules.base import Module
 from modules.nsfw_guard.detector import NsfwDetectionService
-<<<<<<< ours
-=======
 from modules.nsfw_guard.middleware import NsfwGuardMiddleware
->>>>>>> theirs
 from modules.nsfw_guard.storage import NsfwSettingsStorage
 
 
@@ -38,21 +28,12 @@ class NsfwGuardModule(Module):
         super().__init__(name="nsfw_guard", priority=5)
         self.storage = storage or NsfwSettingsStorage()
         self.detector = detector or NsfwDetectionService()
-<<<<<<< ours
-        self._logger = logging.getLogger(__name__)
-
-        self.router.message.register(self._handle_dontcheck, Command("dontcheck"))
-        self.router.message.register(self._handle_enable_for, Command("enablefor"))
-        self.router.message.register(self._handle_photo, F.photo)
-        self.router.message.register(self._handle_document, F.document)
-=======
         self.middleware = NsfwGuardMiddleware(self.storage, self.detector)
         self._logger = logging.getLogger(__name__)
 
         self.router.message.middleware(self.middleware)
         self.router.message.register(self._handle_dontcheck, Command("dontcheck"))
         self.router.message.register(self._handle_enable_for, Command("enablefor"))
->>>>>>> theirs
 
     async def register(self, container):
         self._logger.info("NSFW guard module registered")
@@ -67,7 +48,7 @@ class NsfwGuardModule(Module):
 
         args = (message.text or message.caption or "").split(maxsplit=1)
         if len(args) < 2:
-            await message.answer("Usage: /enablefor <chat_id>")
+            await message.answer("Usage: /enablefor <chat_id>", parse_mode=None)
             return
 
         chat_id_str = args[1].strip()
@@ -97,65 +78,6 @@ class NsfwGuardModule(Module):
         self.storage.ignore_topic(chat_id, topic_id)
         await message.answer("NSFW check disabled for this topic")
         self._logger.info("Disabled NSFW checking for topic %s in chat %s", topic_id, chat_id)
-
-<<<<<<< ours
-    async def _handle_photo(self, message: Message) -> None:
-        if not message.photo:
-            return
-        await self._process_media(message, message.photo[-1])
-
-    async def _handle_document(self, message: Message) -> None:
-        document = message.document
-        if not document:
-            return
-        if not document.mime_type or not document.mime_type.startswith("image/"):
-            return
-        await self._process_media(message, document)
-
-    async def _process_media(self, message: Message, media_object) -> None:
-        if not self.storage.is_chat_enabled(message.chat.id):
-            return
-        if message.message_thread_id and self.storage.is_topic_ignored(
-            message.chat.id, message.message_thread_id
-        ):
-            return
-        if message.has_media_spoiler:
-            return
-
-        image_bytes = await self._download_media(message, media_object)
-        if image_bytes is None:
-            return
-
-        try:
-            is_nsfw = await self.detector.is_nsfw(image_bytes)
-        except Exception as exc:  # pragma: no cover - defensive safety
-            self._logger.exception("Failed to classify media in chat %s: %s", message.chat.id, exc)
-            return
-
-        if is_nsfw:
-            await self._handle_nsfw_detection(message)
-
-    async def _download_media(self, message: Message, media_object) -> Optional[bytes]:
-        bot = message.bot
-        if bot is None:
-            return None
-        buffer = BytesIO()
-        try:
-            await bot.download(media_object, destination=buffer)
-        except Exception:
-            self._logger.exception("Failed to download media from chat %s", message.chat.id)
-            return None
-        return buffer.getvalue()
-
-    async def _handle_nsfw_detection(self, message: Message) -> None:
-        try:
-            await message.delete()
-        except Exception:
-            self._logger.exception("Failed to delete NSFW message in chat %s", message.chat.id)
-        await message.answer("NSFW without Spoilers")
-
-=======
->>>>>>> theirs
 
 def get_module(*_) -> NsfwGuardModule:
     return NsfwGuardModule()

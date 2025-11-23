@@ -50,23 +50,21 @@ def test_detector_label_evaluation():
     detector = NsfwDetectionService()
 
     neutral = [
-<<<<<<< ours
         {"label": "neutral", "score": 0.9},
         {"label": "porn", "score": 0.1},
     ]
-    nsfw = [
-        {"label": "neutral", "score": 0.2},
-        {"label": "porn", "score": 0.8},
-=======
-        {"label": "normal", "score": 0.9},
-        {"label": "nsfw", "score": 0.1},
-    ]
-    nsfw = [
-        {"label": "normal", "score": 0.2},
-        {"label": "nsfw", "score": 0.8},
->>>>>>> theirs
+    nsfw_variants = [
+        [
+            {"label": "neutral", "score": 0.2},
+            {"label": "porn", "score": 0.8},
+        ],
+        [
+            {"label": "normal", "score": 0.2},
+            {"label": "nsfw", "score": 0.8},
+        ],
     ]
 
     assert not detector.is_nsfw_label(neutral)
-    assert detector.is_nsfw_label(nsfw)
+    for result_set in nsfw_variants:
+        assert detector.is_nsfw_label(result_set)
 

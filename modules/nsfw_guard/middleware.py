@@ -46,11 +46,25 @@ class NsfwGuardMiddleware(BaseMiddleware):
         if image_bytes is None:
             return await handler(event, data)
 
+        self._logger.info(
+            "Checking media for NSFW content via model %s (chat=%s, message=%s)",
+            self.detector.model_name,
+            event.chat.id,
+            event.message_id,
+        )
+
         try:
             is_nsfw = await self.detector.is_nsfw(image_bytes)
         except Exception:  # pragma: no cover - defensive safety
             self._logger.exception("Failed to classify media in chat %s", event.chat.id)
             return await handler(event, data)
+
+        self._logger.info(
+            "NSFW classification completed for chat %s message %s: %s",
+            event.chat.id,
+            event.message_id,
+            "nsfw" if is_nsfw else "safe",
+        )
 
         if is_nsfw:
             await self._handle_nsfw_detection(event)
