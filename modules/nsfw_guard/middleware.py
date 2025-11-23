@@ -133,13 +133,15 @@ class NsfwGuardMiddleware(BaseMiddleware):
         bot = message.bot
         if bot is None:
             return None
-        buffer = BytesIO()
+    
         try:
+            buffer = BytesIO()
             await bot.download(media_object, destination=buffer)
+            return buffer.getvalue()
+    
         except Exception:
             self._logger.exception("Failed to download media from chat %s", message.chat.id)
             return None
-        return buffer.getvalue()
 
     async def _handle_nsfw_detection(self, message: Message) -> None:
         await self._delete_message(message)
