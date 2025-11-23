@@ -171,5 +171,7 @@
   "moderation.rank.info_users": "Users ({count}): {users}",
   "moderation.command_restrict.cleared": "🧹 Restriction removed for {command}. Anyone can use it now.",
   "moderation.rank.delete_usage": "Usage: /delmodrank <rank_id>",
-  "moderation.lost_members.header": "🚶 Members who left the chat:"
+  "moderation.lost_members.header": "🚶 Members who left the chat:",
+  "moderation.lost_members.archived": "Archived {count} member(s).",
+  "moderation.lost_members.cleaned": "✅ No more departed members left in records."
 }
