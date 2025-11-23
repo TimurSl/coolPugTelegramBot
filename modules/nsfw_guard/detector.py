@@ -23,23 +23,36 @@ class NsfwDetectionService:
         self._logger = logging.getLogger(__name__)
 
     async def is_nsfw(self, image_bytes: bytes) -> bool:
-        """Sends the image bytes to external API and returns True if NSFW."""
-
+    """Sends the image bytes to external API and returns True if NSFW."""
         try:
             async with aiohttp.ClientSession() as session:
+                form = aiohttp.FormData()
+                form.add_field(
+                    "file",
+                    image_bytes,
+                    filename="image.jpg",
+                    content_type="image/jpeg"
+                )
+    
                 async with session.post(
                     self.api_url,
-                    data={"file": image_bytes},
+                    data=form,
                     timeout=5,
                 ) as resp:
-
+    
                     if resp.status != 200:
                         self._logger.error(
                             "NSFW API returned %s for URL %s", resp.status, self.api_url
                         )
                         return False  # fail-safe
-
+    
                     data = await resp.json()
+    
+        except Exception as e:
+            self._logger.exception("Failed to contact NSFW API at %s: %s", self.api_url, e)
+            return False
+    
+        return data.get("label", "").lower() == "nsfw"
 
         except Exception as e:
             self._logger.exception("Failed to contact NSFW API at %s: %s", self.api_url, e)
