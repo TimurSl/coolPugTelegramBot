@@ -23,7 +23,7 @@ class NsfwDetectionService:
         self._logger = logging.getLogger(__name__)
 
     async def is_nsfw(self, image_bytes: bytes) -> bool:
-    """Sends the image bytes to external API and returns True if NSFW."""
+        """Sends the image bytes to external API and returns True if NSFW."""
         try:
             async with aiohttp.ClientSession() as session:
                 form = aiohttp.FormData()
