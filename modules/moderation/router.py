@@ -204,6 +204,52 @@ class AdvancedModerationModule:
             return f"https://t.me/c/{chat_id_str[1:]}/{message_id}"
         return f"tg://openmessage?chat_id={chat_id}&message_id={message_id}"
 
+    async def warn_user(
+        self, message: Message, bot: Bot, user_id: int, reason: str
+    ) -> tuple[str, int]:
+        """Issue a warning via moderation storage and return a formatted response."""
+
+        language = self._language(message)
+        admin_id = bot.id if bot else (message.from_user.id if message.from_user else 0)
+        timestamp = datetime.now().isoformat()
+
+        with sqlite3.connect(self.db.db_path) as conn:
+            conn.execute(
+                """
+                         INSERT INTO warnings (user_id, chat_id, admin_id, reason, timestamp)
+                         VALUES (?, ?, ?, ?, ?)
+                         """,
+                (user_id, message.chat.id, admin_id, reason, timestamp),
+            )
+
+        warnings = self.db.get_user_warnings(user_id, message.chat.id)
+        warning_count = len(warnings)
+
+        response = self._t(
+            "moderation.warn.response",
+            language,
+            "⚠️ <b>Warning Issued</b>\n"
+            "👤 User: {user_id}\n"
+            "📝 Reason: {reason}\n"
+            "🔢 Warning: {count}/3",
+            user_id=_escape_html(str(user_id)),
+            reason=_escape_html(reason),
+            count=_escape_html(str(warning_count)),
+        )
+
+        self.db.add_action(
+            ModerationAction(
+                action_type="warn",
+                user_id=user_id,
+                admin_id=admin_id,
+                chat_id=message.chat.id,
+                reason=reason,
+            ),
+            active=False,
+        )
+
+        return response, warning_count
+
     def _shorten_preview(self, text: Optional[str]) -> str:
         base = (text or "").replace("\n", " ").strip()
         if not base:

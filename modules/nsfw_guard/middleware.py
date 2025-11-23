@@ -4,13 +4,48 @@ from __future__ import annotations
 
 import logging
 from io import BytesIO
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional, TYPE_CHECKING
 
 from aiogram import BaseMiddleware
 from aiogram.types import Message, TelegramObject
 
 from modules.nsfw_guard.detector import NsfwDetectionService
 from modules.nsfw_guard.storage import NsfwSettingsStorage
+
+if TYPE_CHECKING:
+    from modules.moderation.router import AdvancedModerationModule
+
+
+class ModerationWarningService:
+    """Bridge to the moderation module to issue warnings."""
+
+    def __init__(self, moderation_module: Optional["AdvancedModerationModule"] = None) -> None:
+        from modules.moderation.router import moderation_module as default_moderation_module
+
+        self.moderation_module = moderation_module or default_moderation_module
+        self._logger = logging.getLogger(__name__)
+
+    async def warn(self, message: Message, reason: str) -> Optional[str]:
+        if not message.bot or not message.from_user:
+            return None
+        if self.moderation_module is None:
+            self._logger.warning("Moderation module is not available for warnings")
+            return None
+        try:
+            response, _ = await self.moderation_module.warn_user(
+                message=message,
+                bot=message.bot,
+                user_id=message.from_user.id,
+                reason=reason,
+            )
+            return response
+        except Exception:
+            self._logger.exception(
+                "Failed to issue moderation warning in chat %s for user %s",
+                message.chat.id,
+                message.from_user.id,
+            )
+            return None
 
 
 class NsfwGuardMiddleware(BaseMiddleware):
@@ -20,11 +55,14 @@ class NsfwGuardMiddleware(BaseMiddleware):
         self,
         storage: NsfwSettingsStorage,
         detector: NsfwDetectionService,
+        warning_service: Optional[ModerationWarningService] = None,
     ) -> None:
         super().__init__()
         self.storage = storage
         self.detector = detector
+        self.warning_service = warning_service or ModerationWarningService()
         self._logger = logging.getLogger(__name__)
+        self._warning_reason = "NSFW without spoiler (automatic check)"
 
     async def __call__(
         self,
@@ -104,8 +142,19 @@ class NsfwGuardMiddleware(BaseMiddleware):
         return buffer.getvalue()
 
     async def _handle_nsfw_detection(self, message: Message) -> None:
+        await self._delete_message(message)
+        warning_text = await self.warning_service.warn(message, self._warning_reason)
+        if warning_text:
+            await message.answer(
+                warning_text,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+            return
+        await message.answer(self._warning_reason)
+
+    async def _delete_message(self, message: Message) -> None:
         try:
             await message.delete()
         except Exception:
             self._logger.exception("Failed to delete NSFW message in chat %s", message.chat.id)
-        await message.answer("NSFW without Spoilers")

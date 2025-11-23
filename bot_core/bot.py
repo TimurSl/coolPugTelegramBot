@@ -19,7 +19,7 @@ from modules.filters.router import FilterService
 from modules.autodelete.storage import AutoDeleteStorage
 from modules.collector.storage import UserStorage
 from modules.nsfw_guard.detector import NsfwDetectionService
-from modules.nsfw_guard.middleware import NsfwGuardMiddleware
+from modules.nsfw_guard.middleware import ModerationWarningService, NsfwGuardMiddleware
 from modules.nsfw_guard.storage import NsfwSettingsStorage
 
 
@@ -65,11 +65,14 @@ class ModularBot:
 
         self.nsfw_settings = NsfwSettingsStorage()
         self.nsfw_detector = NsfwDetectionService()
+        self.nsfw_warning_service = ModerationWarningService()
         self.container.register("nsfw_settings", self.nsfw_settings)
         self.container.register("nsfw_detector", self.nsfw_detector)
         logging.debug("Registering NsfwGuardMiddleware")
         self.dp.message.middleware(
-            NsfwGuardMiddleware(self.nsfw_settings, self.nsfw_detector)
+            NsfwGuardMiddleware(
+                self.nsfw_settings, self.nsfw_detector, self.nsfw_warning_service
+            )
         )
 
         self.filter_service = FilterService()

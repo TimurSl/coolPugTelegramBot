@@ -11,7 +11,7 @@ from aiogram.types import Message
 
 from modules.base import Module
 from modules.nsfw_guard.detector import NsfwDetectionService
-from modules.nsfw_guard.middleware import NsfwGuardMiddleware
+from modules.nsfw_guard.middleware import ModerationWarningService, NsfwGuardMiddleware
 from modules.nsfw_guard.storage import NsfwSettingsStorage
 
 
@@ -24,11 +24,15 @@ class NsfwGuardModule(Module):
         self,
         storage: Optional[NsfwSettingsStorage] = None,
         detector: Optional[NsfwDetectionService] = None,
+        warning_service: Optional[ModerationWarningService] = None,
     ) -> None:
         super().__init__(name="nsfw_guard", priority=5)
         self.storage = storage or NsfwSettingsStorage()
         self.detector = detector or NsfwDetectionService()
-        self.middleware = NsfwGuardMiddleware(self.storage, self.detector)
+        self.warning_service = warning_service or ModerationWarningService()
+        self.middleware = NsfwGuardMiddleware(
+            self.storage, self.detector, self.warning_service
+        )
         self._logger = logging.getLogger(__name__)
 
         self.router.message.middleware(self.middleware)
