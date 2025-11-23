@@ -52,7 +52,32 @@ class NsfwDetectionService:
             )
             return False  # fail-safe
 
-        return data.get("label", "").lower() == "nsfw"
+        return self._is_nsfw_response(data)
+
+    def is_nsfw_label(self, labels) -> bool:
+        """Evaluate a label response from the detector."""
+        if not isinstance(labels, (list, tuple)):
+            return False
+
+        nsfw_labels = {"nsfw", "porn", "sexy"}
+        for label in labels:
+            if not isinstance(label, dict):
+                continue
+            name = label.get("label", "")
+            score = float(label.get("score", 0))
+            if name.lower() in nsfw_labels and score >= 0.5:
+                return True
+        return False
+
+    def _is_nsfw_response(self, data) -> bool:
+        if isinstance(data, dict):
+            if "label" in data:
+                return data.get("label", "").lower() == "nsfw"
+            if "labels" in data:
+                return self.is_nsfw_label(data.get("labels"))
+        if isinstance(data, list):
+            return self.is_nsfw_label(data)
+        return False
 
     def unload(self) -> None:
         """Kept for compatibility with old API (does nothing now)."""

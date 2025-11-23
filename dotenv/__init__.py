@@ -22,7 +22,7 @@ def load_dotenv(path: Optional[str] = None) -> bool:
     """Load key=value pairs from a .env file into the environment."""
 
     file_path = Path(path) if path else Path(find_dotenv(usecwd=True))
-    if not file_path.exists():
+    if not file_path.exists() or not file_path.is_file():
         return False
 
     for line in file_path.read_text(encoding="utf-8").splitlines():

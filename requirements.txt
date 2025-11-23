@@ -8,3 +8,4 @@ google-generativeai
 transformers
 torch
 pillow
+opencv-python-headless

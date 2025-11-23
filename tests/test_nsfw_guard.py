@@ -2,6 +2,7 @@ from contextlib import contextmanager
 
 import utils.path_utils as path_utils
 from modules.nsfw_guard.detector import NsfwDetectionService
+from modules.nsfw_guard.media import MediaFrameCollector
 from modules.nsfw_guard.storage import NsfwSettingsStorage
 
 
@@ -67,4 +68,20 @@ def test_detector_label_evaluation():
     assert not detector.is_nsfw_label(neutral)
     for result_set in nsfw_variants:
         assert detector.is_nsfw_label(result_set)
+
+
+def test_gif_frame_extraction():
+    collector = MediaFrameCollector()
+
+    from PIL import Image
+    from io import BytesIO
+
+    frames = [Image.new("RGB", (10, 10), color=color) for color in [(255, 0, 0), (0, 255, 0)]]
+    buffer = BytesIO()
+    frames[0].save(buffer, format="GIF", save_all=True, append_images=frames[1:], loop=0, duration=200)
+
+    extracted = collector._extract_gif_frames(buffer.getvalue(), "test_gif")
+
+    assert len(extracted) == 2
+    assert extracted[0].data != extracted[1].data
 

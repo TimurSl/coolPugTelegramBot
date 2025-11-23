@@ -1,4 +1,4 @@
-"""Module router for NSFW image moderation."""
+"""Module router for NSFW media moderation."""
 
 from __future__ import annotations
 

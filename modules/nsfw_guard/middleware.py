@@ -1,15 +1,15 @@
-"""Middleware to guard chats against NSFW images."""
+"""Middleware to guard chats against NSFW media."""
 
 from __future__ import annotations
 
 import logging
-from io import BytesIO
 from typing import Any, Awaitable, Callable, Dict, Optional, TYPE_CHECKING
 
 from aiogram import BaseMiddleware
 from aiogram.types import Message, TelegramObject
 
 from modules.nsfw_guard.detector import NsfwDetectionService
+from modules.nsfw_guard.media import MediaFrameCollector
 from modules.nsfw_guard.storage import NsfwSettingsStorage
 
 if TYPE_CHECKING:
@@ -49,7 +49,7 @@ class ModerationWarningService:
 
 
 class NsfwGuardMiddleware(BaseMiddleware):
-    """Aiogram middleware that deletes unspoiled NSFW images."""
+    """Aiogram middleware that deletes unspoiled NSFW media."""
 
     def __init__(
         self,
@@ -62,6 +62,7 @@ class NsfwGuardMiddleware(BaseMiddleware):
         self.detector = detector
         self.warning_service = warning_service or ModerationWarningService()
         self._logger = logging.getLogger(__name__)
+        self._media_collector = MediaFrameCollector(self._logger)
         self._warning_reason = "NSFW without spoiler (automatic check)"
 
     async def __call__(
@@ -76,12 +77,8 @@ class NsfwGuardMiddleware(BaseMiddleware):
         if not self._should_check(event):
             return await handler(event, data)
 
-        media_object = self._extract_media(event)
-        if media_object is None:
-            return await handler(event, data)
-
-        image_bytes = await self._download_media(event, media_object)
-        if image_bytes is None:
+        media_frames = await self._media_collector.collect(event)
+        if not media_frames:
             return await handler(event, data)
 
         self._logger.info(
@@ -91,22 +88,26 @@ class NsfwGuardMiddleware(BaseMiddleware):
             event.message_id,
         )
 
-        try:
-            is_nsfw = await self.detector.is_nsfw(image_bytes)
-        except Exception:  # pragma: no cover - defensive safety
-            self._logger.exception("Failed to classify media in chat %s", event.chat.id)
-            return await handler(event, data)
+        for frame in media_frames:
+            try:
+                is_nsfw = await self.detector.is_nsfw(frame.data)
+            except Exception:  # pragma: no cover - defensive safety
+                self._logger.exception(
+                    "Failed to classify media (%s) in chat %s", frame.description, event.chat.id
+                )
+                continue
 
-        self._logger.info(
-            "NSFW classification completed for chat %s message %s: %s",
-            event.chat.id,
-            event.message_id,
-            "nsfw" if is_nsfw else "safe",
-        )
+            self._logger.info(
+                "NSFW classification completed for chat %s message %s [%s]: %s",
+                event.chat.id,
+                event.message_id,
+                frame.description,
+                "nsfw" if is_nsfw else "safe",
+            )
 
-        if is_nsfw:
-            await self._handle_nsfw_detection(event)
-            return None
+            if is_nsfw:
+                await self._handle_nsfw_detection(event)
+                return None
 
         return await handler(event, data)
 
@@ -120,28 +121,6 @@ class NsfwGuardMiddleware(BaseMiddleware):
         if message.has_media_spoiler:
             return False
         return True
-
-    def _extract_media(self, message: Message):
-        if message.photo:
-            return message.photo[-1]
-        document = message.document
-        if document and document.mime_type and document.mime_type.startswith("image/"):
-            return document
-        return None
-
-    async def _download_media(self, message: Message, media_object) -> Optional[bytes]:
-        bot = message.bot
-        if bot is None:
-            return None
-    
-        try:
-            buffer = BytesIO()
-            await bot.download(media_object, destination=buffer)
-            return buffer.getvalue()
-    
-        except Exception:
-            self._logger.exception("Failed to download media from chat %s", message.chat.id)
-            return None
 
     async def _handle_nsfw_detection(self, message: Message) -> None:
         await self._delete_message(message)
