@@ -173,5 +173,12 @@
   "moderation.rank.delete_usage": "Usage: /delmodrank <rank_id>",
   "moderation.lost_members.header": "🚶 Members who left the chat:",
   "moderation.lost_members.archived": "Archived {count} member(s).",
-  "moderation.lost_members.cleaned": "✅ No more departed members left in records."
+  "moderation.lost_members.cleaned": "✅ No more departed members left in records.",
+  "moderation.unwarn.usage": "❌ Please specify a user to remove warning from.",
+  "roleplay.nick.usage": "Usage: /rpnick new_nickname (can be used in reply)",
+  "filters.replace.not_found": "⚠ The specified template was not found.",
+  "moderation.unban.usage": "❌ Please specify a user to unban.",
+  "filters.error.invalid_regex": "❌ Invalid regular expression: {error}",
+  "moderation.report.reply_required": "❌ Reply to the message you want to report.",
+  "moderation.unmediamute.success": "🔊 User {user_id} has been media-unmuted."
 }

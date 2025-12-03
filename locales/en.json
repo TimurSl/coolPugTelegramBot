@@ -340,5 +340,6 @@
   "moderation.rank.delete_usage": "Usage: /delmodrank <rank_id>",
   "moderation.lost_members.header": "🚶 Members who left the chat:",
   "moderation.lost_members.archived": "Archived {count} member(s).",
-  "moderation.lost_members.cleaned": "✅ No more departed members left in records."
+  "moderation.lost_members.cleaned": "✅ No more departed members left in records.",
+  "moderation.report.reply_required": "❌ Reply to the message you want to report."
 }

@@ -248,6 +248,39 @@ class AdvancedModerationModule:
             active=False,
         )
 
+        if warning_count >= 3:
+            response += "\n\n" + self._t(
+                "moderation.warn.auto_mute_notice",
+                language,
+                "🔨 <b>Maximum warnings reached! User will be muted.</b>",
+            )
+
+            mute_permissions = ChatPermissions(can_send_messages=False)
+            try:
+                auto_mute_duration = timedelta(hours=1)
+                auto_mute_until = datetime.now() + auto_mute_duration
+
+                await bot.restrict_chat_member(
+                    chat_id=message.chat.id,
+                    user_id=user_id,
+                    permissions=mute_permissions,
+                    until_date=auto_mute_until,
+                )
+
+                self.db.add_action(
+                    ModerationAction(
+                        action_type="mute",
+                        user_id=user_id,
+                        admin_id=admin_id,
+                        chat_id=message.chat.id,
+                        duration=auto_mute_duration,
+                        reason="Automatic mute after reaching 3 warnings.",
+                        expires_at=auto_mute_until,
+                    )
+                )
+            except TelegramAPIError:
+                pass
+
         return response, warning_count
 
     def _shorten_preview(self, text: Optional[str]) -> str:
