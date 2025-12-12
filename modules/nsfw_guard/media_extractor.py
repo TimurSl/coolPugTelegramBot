@@ -15,6 +15,11 @@ except ImportError:  # pragma: no cover - optional dependency
     cv2 = None
 
 try:  # pragma: no cover - optional dependency
+    import numpy as np
+except ImportError:  # pragma: no cover - optional dependency
+    np = None
+
+try:  # pragma: no cover - optional dependency
     from PIL import Image
 except ImportError:  # pragma: no cover - optional dependency
     Image = None
@@ -37,6 +42,15 @@ class MediaFrameExtractor:
         if self._is_video(mime_type, file_name):
             return self._extract_video_frames(media_bytes, file_name)
         return [media_bytes]
+
+    @staticmethod
+    def _normalize_frame_colors(frame):
+        if np is None:
+            return frame
+        normalized = frame.copy()
+        normalized[normalized >= 245] = 255
+        normalized[normalized <= 10] = 0
+        return normalized
 
     def _is_gif(self, media_bytes: bytes, mime_type: Optional[str], file_name: Optional[str]) -> bool:
         if mime_type and mime_type.lower().startswith("image/gif"):
@@ -96,9 +110,9 @@ class MediaFrameExtractor:
                 success, frame = capture.read()
                 if not success:
                     continue
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 buffer = BytesIO()
-                Image.fromarray(rgb_frame).save(buffer, format="JPEG")
+                normalized_frame = self._normalize_frame_colors(frame)
+                Image.fromarray(normalized_frame).save(buffer, format="PNG")
                 frames.append(buffer.getvalue())
 
             capture.release()

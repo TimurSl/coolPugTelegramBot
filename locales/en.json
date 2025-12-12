@@ -341,5 +341,8 @@
   "moderation.lost_members.header": "🚶 Members who left the chat:",
   "moderation.lost_members.archived": "Archived {count} member(s).",
   "moderation.lost_members.cleaned": "✅ No more departed members left in records.",
-  "moderation.report.reply_required": "❌ Reply to the message you want to report."
+  "moderation.report.reply_required": "❌ Reply to the message you want to report.",
+  "filters.trigger.event": "[event] <code>{pattern}</code>",
+  "moderation.modlevels.header": "<b>Available moderator ranks</b>",
+  "moderation.modlevels.entry": "#{id}: {name} — level {level}, priority {priority}"
 }

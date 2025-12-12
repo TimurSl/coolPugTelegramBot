@@ -180,5 +180,10 @@
   "moderation.unban.usage": "❌ Please specify a user to unban.",
   "filters.error.invalid_regex": "❌ Invalid regular expression: {error}",
   "moderation.report.reply_required": "❌ Reply to the message you want to report.",
-  "moderation.unmediamute.success": "🔊 User {user_id} has been media-unmuted."
+  "moderation.unmediamute.success": "🔊 User {user_id} has been media-unmuted.",
+  "filters.trigger.event": "[event] <code>{pattern}</code>",
+  "moderation.kick.usage": "❌ Please specify a user to kick or reply to their message.",
+  "moderation.award.delete_success": "🗑 Removed award #{award_id} from {target}.",
+  "moderation.modlevels.header": "<b>Available moderator ranks</b>",
+  "moderation.modlevels.entry": "#{id}: {name} — level {level}, priority {priority}"
 }

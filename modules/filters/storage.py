@@ -13,6 +13,7 @@ from utils.path_utils import get_home_dir
 
 MATCH_TYPE_CONTAINS = "contains"
 MATCH_TYPE_REGEX = "regex"
+MATCH_TYPE_EVENT = "event"
 
 
 @dataclass
@@ -83,16 +84,23 @@ class FilterStorage:
         value = trigger.strip()
         if match_type == MATCH_TYPE_REGEX:
             return f"regex::{value}"
+        if match_type == MATCH_TYPE_EVENT:
+            return f"event::{value.lower()}"
         return value.lower()
 
     def _present_pattern(
         self, pattern: Optional[str], trigger_value: str, match_type: str
     ) -> str:
         if pattern and pattern.strip():
-            return pattern.strip()
-        cleaned = trigger_value.strip()
+            cleaned = pattern.strip()
+        else:
+            cleaned = trigger_value.strip()
         if match_type == MATCH_TYPE_REGEX and cleaned.startswith("regex::"):
             cleaned = cleaned[len("regex::") :]
+        if match_type == MATCH_TYPE_EVENT:
+            if cleaned.startswith("event::"):
+                cleaned = cleaned[len("event::") :]
+            cleaned = cleaned.lower()
         return cleaned
 
     def add_template(

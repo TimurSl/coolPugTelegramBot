@@ -17,6 +17,7 @@ from modules.base import Module
 from modules.collector.utils import UserCollector
 from modules.filters.storage import (
     MATCH_TYPE_CONTAINS,
+    MATCH_TYPE_EVENT,
     MATCH_TYPE_REGEX,
     FilterStorage,
     FilterTemplate,
@@ -106,6 +107,18 @@ class FilterService:
         self._storage = storage or FilterStorage()
         self._nickname_storage = nickname_storage or CustomNicknameStorage()
 
+    @staticmethod
+    def _normalise_event_trigger(event_name: str) -> str:
+        return f"event::{event_name.strip().lower()}"
+
+    @staticmethod
+    def _detect_event_name(message: Message) -> Optional[str]:
+        if getattr(message, "new_chat_members", None):
+            return "user_joined"
+        if getattr(message, "left_chat_member", None):
+            return "user_left"
+        return None
+
     @property
     def storage(self) -> FilterStorage:
         return self._storage
@@ -118,8 +131,9 @@ class FilterService:
         if message.from_user and message.from_user.is_bot:
             return
 
-        text = message.text or message.caption
-        if not text:
+        text = message.text or message.caption or ""
+        event_name = self._detect_event_name(message)
+        if not text and not event_name:
             return
 
         chat = getattr(message, "chat", None)
@@ -134,7 +148,16 @@ class FilterService:
         text_lower = text.lower()
         matches: list[tuple[str, str, str]] = []
         match_arguments: dict[tuple[str, str], str] = {}
+        event_trigger_key = (
+            self._normalise_event_trigger(event_name) if event_name else None
+        )
+
         for trigger_key, pattern, match_type in definitions:
+            if match_type == MATCH_TYPE_EVENT:
+                if event_trigger_key and trigger_key == event_trigger_key:
+                    matches.append((trigger_key, pattern, match_type))
+                continue
+
             if match_type == MATCH_TYPE_REGEX:
                 try:
                     match_obj = re.search(pattern, text, flags=re.IGNORECASE)
@@ -151,6 +174,8 @@ class FilterService:
                         (trigger_key, match_type), text[match_obj.end() :].lstrip()
                     )
             else:
+                if not text:
+                    continue
                 index = text_lower.find(trigger_key)
                 if index != -1:
                     matches.append((trigger_key, pattern, match_type))
@@ -609,6 +634,9 @@ class FilterCommandHandler:
     class FilterCommandOptions:
         match_type: str = MATCH_TYPE_CONTAINS
         delete_original: bool = False
+        event_type: Optional[str] = None
+
+    ALLOWED_EVENTS = ("user_joined", "user_left")
 
     def __init__(self, service: FilterService) -> None:
         self._service = service
@@ -637,6 +665,14 @@ class FilterCommandHandler:
                 options.match_type = MATCH_TYPE_REGEX
             elif option in ("--delete", "-d"):
                 options.delete_original = True
+            elif option in ("--event", "-v"):
+                if index + 1 >= len(args):
+                    index += 1
+                    break
+                options.match_type = MATCH_TYPE_EVENT
+                options.event_type = args[index + 1].lower()
+                index += 2
+                continue
             else:
                 break
             index += 1
@@ -651,6 +687,8 @@ class FilterCommandHandler:
         join_rest: bool = True,
     ) -> tuple[Optional[str], "FilterCommandHandler.FilterCommandOptions", int]:
         options, index = cls._parse_command_options(args, start_index=start_index)
+        if options.match_type == MATCH_TYPE_EVENT:
+            return options.event_type, options, index
         if index >= len(args):
             return None, options, index
         if join_rest:
@@ -672,12 +710,25 @@ class FilterCommandHandler:
                 default="[regex] <code>{pattern}</code>",
                 pattern=pattern,
             )
+        if match_type == MATCH_TYPE_EVENT:
+            return gettext(
+                "filters.trigger.event",
+                language=language,
+                default="[event] <code>{pattern}</code>",
+                pattern=pattern,
+            )
         return gettext(
             "filters.trigger.contains",
             language=language,
             default="[contains] <code>{pattern}</code>",
             pattern=pattern,
         )
+
+    @classmethod
+    def _validate_event_trigger(cls, trigger: Optional[str]) -> Optional[str]:
+        if trigger and trigger in cls.ALLOWED_EVENTS:
+            return None
+        return ", ".join(cls.ALLOWED_EVENTS)
 
     @staticmethod
     def _validate_regex(pattern: str) -> Optional[str]:
@@ -696,10 +747,23 @@ class FilterCommandHandler:
                 gettext(
                     "filters.add.usage",
                     language=language,
-                    default="Usage: /filteradd [--regex] [-d] word (command must reply to a message)",
+                    default="Usage: /filteradd [--regex|-v event] [-d] word (command must reply to a message)",
                 )
             )
             return
+
+        if options.match_type == MATCH_TYPE_EVENT:
+            allowed_events = self._validate_event_trigger(trigger)
+            if allowed_events:
+                await message.answer(
+                    gettext(
+                        "filters.error.invalid_event",
+                        language=language,
+                        default="❌ Unknown event. Allowed: {events}",
+                        events=allowed_events,
+                    )
+                )
+                return
 
         if not message.reply_to_message:
             await message.answer(
@@ -766,10 +830,23 @@ class FilterCommandHandler:
                 gettext(
                     "filters.list.usage",
                     language=language,
-                    default="Usage: /filterlist [--regex] word",
+                    default="Usage: /filterlist [--regex|-v event] word",
                 )
             )
             return
+
+        if options.match_type == MATCH_TYPE_EVENT:
+            allowed_events = self._validate_event_trigger(trigger)
+            if allowed_events:
+                await message.answer(
+                    gettext(
+                        "filters.error.invalid_event",
+                        language=language,
+                        default="❌ Unknown event. Allowed: {events}",
+                        events=allowed_events,
+                    )
+                )
+                return
 
         if options.match_type == MATCH_TYPE_REGEX:
             error = self._validate_regex(trigger)
@@ -833,10 +910,23 @@ class FilterCommandHandler:
                 gettext(
                     "filters.replace.usage",
                     language=language,
-                    default="Usage: /filterreplace [--regex] [-d] word id (command must reply to a message)",
+                    default="Usage: /filterreplace [--regex|-v event] [-d] word id (command must reply to a message)",
                 )
             )
             return
+
+        if options.match_type == MATCH_TYPE_EVENT:
+            allowed_events = self._validate_event_trigger(trigger)
+            if allowed_events:
+                await message.answer(
+                    gettext(
+                        "filters.error.invalid_event",
+                        language=language,
+                        default="❌ Unknown event. Allowed: {events}",
+                        events=allowed_events,
+                    )
+                )
+                return
 
         if not message.reply_to_message:
             await message.answer(
@@ -925,10 +1015,23 @@ class FilterCommandHandler:
                 gettext(
                     "filters.remove.usage",
                     language=language,
-                    default="Usage: /filterremove [--regex] word id",
+                    default="Usage: /filterremove [--regex|-v event] word id",
                 )
             )
             return
+
+        if options.match_type == MATCH_TYPE_EVENT:
+            allowed_events = self._validate_event_trigger(trigger)
+            if allowed_events:
+                await message.answer(
+                    gettext(
+                        "filters.error.invalid_event",
+                        language=language,
+                        default="❌ Unknown event. Allowed: {events}",
+                        events=allowed_events,
+                    )
+                )
+                return
 
         if options.match_type == MATCH_TYPE_REGEX:
             error = self._validate_regex(trigger)
@@ -988,10 +1091,23 @@ class FilterCommandHandler:
                 gettext(
                     "filters.clear.usage",
                     language=language,
-                    default="Usage: /filterclear [--regex] word",
+                    default="Usage: /filterclear [--regex|-v event] word",
                 )
             )
             return
+
+        if options.match_type == MATCH_TYPE_EVENT:
+            allowed_events = self._validate_event_trigger(trigger)
+            if allowed_events:
+                await message.answer(
+                    gettext(
+                        "filters.error.invalid_event",
+                        language=language,
+                        default="❌ Unknown event. Allowed: {events}",
+                        events=allowed_events,
+                    )
+                )
+                return
 
         if options.match_type == MATCH_TYPE_REGEX:
             error = self._validate_regex(trigger)
